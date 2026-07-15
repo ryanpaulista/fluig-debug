@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        font-size: 13px;
+        margin: 0;
+        padding: 16px;
+        line-height: 1.5;
+      }
+      h1 {
+        font-size: 15px;
+        margin: 0 0 12px 0;
+      }
+      h2 {
+        font-size: 13px;
+        margin: 0 0 2px 0;
+      }
+      .muted {
+        opacity: 0.7;
+      }
+      .ok {
+        color: #2e7d32;
+      }
+      .err {
+        color: #c62828;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        padding: 1px 4px;
+        border-radius: 3px;
+        background: rgba(127, 127, 127, 0.18);
+      }
+      section {
+        margin-bottom: 22px;
+      }
+      .field-row {
+        display: flex;
+        gap: 8px;
+        margin: 8px 0 10px 0;
+        flex-wrap: wrap;
+      }
+      input[type="text"] {
+        font: inherit;
+        flex: 1;
+        min-width: 120px;
+        padding: 6px 8px;
+        border: 1px solid rgba(127, 127, 127, 0.5);
+        border-radius: 4px;
+        background: transparent;
+        color: inherit;
+      }
+      button {
+        font: inherit;
+        padding: 6px 14px;
+        cursor: pointer;
+      }
+      button.danger {
+        border-color: #c62828;
+        color: #c62828;
+        font-weight: 600;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        margin: 3px 0;
+        flex-wrap: wrap;
+      }
+      .k {
+        display: inline-block;
+        min-width: 72px;
+        opacity: 0.7;
+      }
+      .match {
+        border-left: 2px solid rgba(127, 127, 127, 0.35);
+        padding-left: 10px;
+        margin: 8px 0;
+      }
+      .confirm {
+        border: 1px solid rgba(255, 167, 38, 0.6);
+        background: rgba(255, 167, 38, 0.1);
+        border-radius: 6px;
+        padding: 10px 12px;
+      }
+      .tag {
+        font-size: 11px;
+        padding: 1px 6px;
+        border-radius: 8px;
+        background: rgba(127, 127, 127, 0.2);
+      }
+      .tag.warn {
+        background: rgba(255, 167, 38, 0.28);
+      }
+      .out {
+        border-top: 1px solid rgba(127, 127, 127, 0.25);
+        padding-top: 10px;
+        min-height: 8px;
+      }
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        min-height: 220px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        padding: 8px;
+        border: 1px solid rgba(127, 127, 127, 0.5);
+        border-radius: 4px;
+        background: transparent;
+        color: inherit;
+        resize: vertical;
+        white-space: pre;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Fluig Debug</h1>
+
+    <section>
+      <h2>Ler campo</h2>
+      <p class="muted">
+        Lê o valor pelo nome. Trata campo desabilitado (<code>_</code>) e linhas
+        de tabela pai-filho (<code>___N</code>).
+      </p>
+      <div class="field-row">
+        <input id="read-field" type="text" placeholder="nome do campo (ex: empresa)" />
+        <button id="btn-read" type="button">Ler</button>
+      </div>
+      <div id="read-output" class="out"></div>
+    </section>
+
+    <section>
+      <h2>Setar campo</h2>
+      <p class="muted">
+        Altera o valor via <code>$(campo).val(valor)</code>. Mostra uma
+        confirmação (campo + valor atual → novo) antes de aplicar.
+      </p>
+      <div class="field-row">
+        <input id="set-field" type="text" placeholder="nome do campo" />
+        <input id="set-value" type="text" placeholder="novo valor" />
+        <button id="btn-set" type="button">Setar</button>
+      </div>
+      <div id="set-output" class="out"></div>
+    </section>
+
+    <section>
+      <h2>Dump do estado</h2>
+      <p class="muted">
+        Coleta todos os campos e valores em JSON (agrupa tabelas pai-filho por
+        <code>___N</code>) e inclui os <code>console.log</code>/erros capturados
+        desde que o DevTools foi aberto. Pronto para colar como contexto em uma IA.
+      </p>
+      <div class="field-row">
+        <button id="btn-dump" type="button">Gerar dump</button>
+        <button id="btn-copy-dump" type="button">Copiar</button>
+        <span id="dump-status" class="muted"></span>
+      </div>
+      <textarea id="dump-json" readonly placeholder="O JSON aparece aqui após 'Gerar dump'."></textarea>
+    </section>
+
+    <script src="panel.js"></script>
+  </body>
+</html>
