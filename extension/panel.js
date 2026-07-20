@@ -80,6 +80,10 @@ function buildFindExpr(typed) {
     PAGE_HELPERS,
     '  var typed = ' + typedLit + ';',
     '  var base = logical(typed);',
+    '  // Se o usuario digitou um "___N" explicito (ex: nome___1), mira SO aquela',
+    '  // linha da tabela pai-filho. Sem sufixo, traz todas as ocorrencias.',
+    '  var typedChildMatch = String(typed).match(/___(\\d+)$/);',
+    '  var typedChild = typedChildMatch ? typedChildMatch[1] : null;',
     '',
     '  var wins = collectWindows(window, [], 0);',
     '  var matches = [];',
@@ -101,17 +105,24 @@ function buildFindExpr(typed) {
     '      if (!raw) { continue; }',
     '      if (logical(raw) !== base) { continue; }',
     '',
+    '      var childMatch = String(raw).match(/___(\\d+)$/);',
+    '      var rawChild = childMatch ? childMatch[1] : null;',
+    '      // Filtro por linha: se pediu ___N, so casa a mesma linha.',
+    '      if (typedChild !== null && rawChild !== typedChild) { continue; }',
+    '',
     '      var v = readValue(node, jq);',
     '      if (v == null) { v = ""; }',
     '',
-    '      var childMatch = String(raw).match(/___(\\d+)$/);',
+    '      var table = null;',
+    '      try { var t = node.closest ? node.closest("table[tablename]") : null; if (t) { table = t.getAttribute("tablename"); } } catch (e) {}',
     '      var disabled = /^_/.test(String(nm || "")) || /^_/.test(String(id || ""));',
     '      matches.push({',
     '        name: raw,',
     '        id: id,',
     '        value: String(v),',
     '        disabled: disabled,',
-    '        child: childMatch ? childMatch[1] : null,',
+    '        child: rawChild,',
+    '        table: table,',
     '        type: String(node.type || node.tagName || "").toLowerCase(),',
     '        frame: (w === window ? "top" : "iframe"),',
     '        exact: (String(raw) === typed)',
@@ -120,6 +131,62 @@ function buildFindExpr(typed) {
     '  }',
     '',
     '  return { typed: typed, base: base, matches: matches, framesScanned: wins.length };',
+    '})()'
+  ].join('\n');
+}
+
+// Coleta a LINHA inteira de uma tabela pai-filho: todos os campos que estao na
+// MESMA tabela (tablename) e no MESMO indice de linha (___N). O escopo por
+// tablename e essencial: duas tabelas pai-filho podem ter a linha ___0, e sem
+// isso as linhas de tabelas diferentes se misturariam.
+function buildRowExpr(tablename, child) {
+  return [
+    '(function () {',
+    PAGE_HELPERS,
+    '  var wantTable = ' + JSON.stringify(String(tablename)) + ';',
+    '  var wantChild = ' + JSON.stringify(String(child)) + ';',
+    '',
+    '  var wins = collectWindows(window, [], 0);',
+    '  var fields = [];',
+    '',
+    '  for (var i = 0; i < wins.length; i++) {',
+    '    var w = wins[i];',
+    '    var doc;',
+    '    try { doc = w.document; } catch (e) { continue; }',
+    '    var jq = null;',
+    '    try { jq = w.jQuery || w.$ || null; } catch (e) {}',
+    '    var nodes;',
+    '    try { nodes = doc.querySelectorAll("input, select, textarea, span[name]"); } catch (e) { continue; }',
+    '',
+    '    for (var j = 0; j < nodes.length; j++) {',
+    '      var node = nodes[j];',
+    '      var nm = node.getAttribute("name");',
+    '      var id = node.id || null;',
+    '      var raw = nm || id;',
+    '      if (!raw) { continue; }',
+    '',
+    '      var childMatch = String(raw).match(/___(\\d+)$/);',
+    '      var rawChild = childMatch ? childMatch[1] : null;',
+    '      if (rawChild !== wantChild) { continue; }',
+    '',
+    '      var table = null;',
+    '      try { var t = node.closest ? node.closest("table[tablename]") : null; if (t) { table = t.getAttribute("tablename"); } } catch (e) {}',
+    '      if (table !== wantTable) { continue; }',
+    '',
+    '      var v = readValue(node, jq);',
+    '      if (v == null) { v = ""; }',
+    '      var disabled = /^_/.test(String(nm || "")) || /^_/.test(String(id || ""));',
+    '      fields.push({',
+    '        name: raw,',
+    '        field: logical(raw),',
+    '        value: String(v),',
+    '        disabled: disabled,',
+    '        type: String(node.type || node.tagName || "").toLowerCase()',
+    '      });',
+    '    }',
+    '  }',
+    '',
+    '  return { table: wantTable, child: wantChild, fields: fields };',
     '})()'
   ].join('\n');
 }
@@ -246,11 +313,62 @@ function readField() {
           '</div>';
       });
 
+      // Linha completa: so quando o usuario mirou uma linha especifica (___N) e
+      // o campo pertence a uma tabela pai-filho (tem tablename). Reserva o espaco
+      // e preenche apos a 2a consulta (a linha).
+      var typedChild = typed.match(/___(\d+)$/);
+      var rowTarget = typedChild
+        ? result.matches.filter(function (m) { return m.table && m.child; })[0]
+        : null;
+      if (rowTarget) {
+        html += '<div id="read-row"><p class="muted">Carregando a linha completa…</p></div>';
+      }
+
       render('read-output', html);
+
+      if (rowTarget) {
+        evalInPage(buildRowExpr(rowTarget.table, rowTarget.child))
+          .then(function (row) { renderRow(row, rowTarget.name); })
+          .catch(function (exceptionInfo) {
+            var el = document.getElementById('read-row');
+            if (el) { el.innerHTML = '<span class="err">Erro ao ler a linha: ' + esc(JSON.stringify(exceptionInfo)) + '</span>'; }
+          });
+      }
     })
     .catch(function (exceptionInfo) {
       render('read-output', '<span class="err">Erro ao avaliar na página: ' + esc(JSON.stringify(exceptionInfo)) + '</span>');
     });
+}
+
+// Preenche o bloco "Linha completa" com os demais campos da mesma linha da
+// tabela pai-filho. `queriedName` marca o campo que o usuario leu.
+function renderRow(row, queriedName) {
+  var el = document.getElementById('read-row');
+  if (!el) { return; }
+
+  if (!row || !row.fields || !row.fields.length) {
+    el.innerHTML = '<p class="muted">Não encontrei os demais campos desta linha.</p>';
+    return;
+  }
+
+  var html =
+    '<p><strong>Linha completa</strong></p>' +
+    '<div class="row"><span class="k">tabela</span><code>' + esc(row.table) + '</code> ' +
+    '<span class="tag">linha ' + esc(row.child) + '</span> ' +
+    '<span class="muted">(' + row.fields.length + ' campo(s))</span></div>' +
+    '<div class="match">';
+
+  row.fields.forEach(function (f) {
+    var extra = '';
+    if (f.name === queriedName) { extra += ' <span class="tag">lido</span>'; }
+    if (f.disabled) { extra += ' <span class="tag warn">desabilitado (_)</span>'; }
+    html +=
+      '<div class="row"><span class="k">' + esc(f.field) + '</span>' +
+      '<code>' + renderValue(f.value) + '</code>' + extra + '</div>';
+  });
+
+  html += '</div>';
+  el.innerHTML = html;
 }
 
 // ---------------------------------------------------------------------------
