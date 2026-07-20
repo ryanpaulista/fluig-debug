@@ -155,6 +155,12 @@ Notas:
   storage.
 - Campos duplicados (inputs espelhados do Fluig) com valores diferentes viram
   um array, para sinalizar a ambiguidade em vez de escondê-la.
+- **Modo VIEW / processo finalizado:** nesses contextos o Fluig troca os inputs
+  por `<span>` (mantendo `name`/`id`, com o valor no texto — ex.:
+  `<span id="startDate" name="startDate">22/06/2026</span>`). As três funções
+  (ler, setar e dump) varrem também `span[name]` e leem o valor pelo texto, então
+  o dump não perde mais esses campos. No ler/setar eles aparecem com a tag
+  **somente leitura**.
 
 ### Captura de console (logs no dump)
 
@@ -170,3 +176,57 @@ dump lê esse buffer e inclui em `logs`.
   aberto** (quando o hook é instalado). Logs anteriores não aparecem. Para
   capturar o log de uma ação, mantenha o F12 aberto e reproduza a ação.
 - O hook é reinstalado a cada navegação (a página nova zera o buffer).
+
+## Como testar a Etapa 6 (documentId da solicitação — CU-03)
+
+1. Recarregue a extensão e reabra o DevTools.
+2. Abra uma **solicitação de workflow** real (uma URL de `pageworkflowview` com o
+   parâmetro `app_ecm_workflowview_detailsProcessInstanceID=<n>`).
+3. Vá na aba **Fluig Debug**. A seção **Solicitação** fica no topo e resolve
+   sozinha, **sem clique**:
+   - **Solicitação:** o número lido da URL.
+   - **documentId:** resolvido consultando o dataset `workflowProcess`.
+4. Se o formulário ainda estava carregando quando o painel abriu (o
+   `DatasetFactory` client-side pode não estar pronto), clique em **Recarregar**.
+
+Como funciona (não garimpa o DOM):
+
+- O número da solicitação vem do parâmetro de URL
+  `app_ecm_workflowview_detailsProcessInstanceID`.
+- Com esse número, a extensão executa **no contexto da página** uma consulta ao
+  dataset `workflowProcess` (via `DatasetFactory` client-side do Fluig),
+  filtrando por `workflowProcessPK.processInstanceId` e pedindo o campo
+  `cardDocumentId` — que **é** o documentId da solicitação. O valor vem do
+  próprio dataset do Fluig (autoritativo), não de heurística sobre o HTML.
+
+> **Escopo atual:** a Etapa 6 foca no **documentId**. Outras variáveis de
+> contexto (usuário, atividade etc.) ficam para fatias seguintes, no mesmo
+> padrão (valor via API/dataset do Fluig, não via DOM).
+
+## Como testar o "Setar campo no banco"
+
+Além do **Setar campo** (que faz `$(campo).val()` no DOM), existe o **Setar campo
+no banco**, que grava o valor **direto no banco** via o dataset
+`dsSetCardValue`, usando o `documentId` da solicitação. Serve para os casos em
+que o DOM não aceita a alteração — o principal é a **solicitação finalizada**
+(campos viram `span`, `$(campo).val()` não persiste nada).
+
+1. Recarregue a extensão e reabra o DevTools sobre uma solicitação de workflow.
+2. Na seção **Setar campo no banco**, digite o nome do campo e o novo valor, e
+   clique em **Setar no banco**.
+3. **Esperado:** aparece uma **confirmação** mostrando a solicitação, o
+   `documentId` resolvido, o campo e o novo valor. Nada é gravado ainda.
+4. Clique em **Confirmar gravação**. A extensão resolve o `documentId` (via
+   `workflowProcess`) e executa `dsSetCardValue` com `documentid` + `fieldName` +
+   `fieldValue`. O painel confirma a gravação.
+5. **Recarregue o formulário** para ver o valor novo — a gravação foi no banco,
+   não no DOM aberto.
+
+Cuidados:
+
+- **Confirmação obrigatória**, como no setar do DOM — ainda mais importante aqui,
+  porque grava no banco **ignorando** as validações/lógicas do formulário.
+- Depende do `documentId` resolver (mesma base da seção **Solicitação**): só
+  funciona sobre uma `pageworkflowview` com o parâmetro
+  `app_ecm_workflowview_detailsProcessInstanceID` e com `DatasetFactory`
+  client-side disponível.

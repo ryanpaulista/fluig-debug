@@ -50,6 +50,19 @@ var PAGE_HELPERS = [
   '      catch (e) { /* cross-origin: ignora */ }',
   '    }',
   '    return acc;',
+  '  }',
+  '  // Em modo VIEW / processo finalizado o Fluig troca inputs por <span> (mantendo',
+  '  // name/id; o valor vira o texto). Estes helpers unificam a leitura.',
+  '  function nodeIsControl(node) {',
+  '    var t = String(node.tagName || "").toUpperCase();',
+  '    return t === "INPUT" || t === "SELECT" || t === "TEXTAREA";',
+  '  }',
+  '  function readValue(node, jq) {',
+  '    if (nodeIsControl(node)) {',
+  '      try { return jq ? jq(node).val() : node.value; } catch (e) { return node.value; }',
+  '    }',
+  '    var txt = (node.textContent != null ? node.textContent : node.innerText);',
+  '    return txt == null ? "" : String(txt).replace(/^\\s+|\\s+$/g, "");',
   '  }'
 ].join('\n');
 
@@ -78,7 +91,7 @@ function buildFindExpr(typed) {
     '    var jq = null;',
     '    try { jq = w.jQuery || w.$ || null; } catch (e) {}',
     '    var nodes;',
-    '    try { nodes = doc.querySelectorAll("input, select, textarea"); } catch (e) { continue; }',
+    '    try { nodes = doc.querySelectorAll("input, select, textarea, span[name]"); } catch (e) { continue; }',
     '',
     '    for (var j = 0; j < nodes.length; j++) {',
     '      var node = nodes[j];',
@@ -88,8 +101,7 @@ function buildFindExpr(typed) {
     '      if (!raw) { continue; }',
     '      if (logical(raw) !== base) { continue; }',
     '',
-    '      var v;',
-    '      try { v = jq ? jq(node).val() : node.value; } catch (e) { v = node.value; }',
+    '      var v = readValue(node, jq);',
     '      if (v == null) { v = ""; }',
     '',
     '      var childMatch = String(raw).match(/___(\\d+)$/);',
@@ -139,7 +151,7 @@ function buildSetExpr(rawName, value) {
     '    var jq = null;',
     '    try { jq = w.jQuery || w.$ || null; } catch (e) {}',
     '    var nodes;',
-    '    try { nodes = doc.querySelectorAll("input, select, textarea"); } catch (e) { continue; }',
+    '    try { nodes = doc.querySelectorAll("input, select, textarea, span[name]"); } catch (e) { continue; }',
     '',
     '    for (var j = 0; j < nodes.length; j++) {',
     '      var node = nodes[j];',
@@ -147,11 +159,13 @@ function buildSetExpr(rawName, value) {
     '      var id = node.id || null;',
     '      if (nm !== target && id !== target) { continue; }',
     '',
-    '      try { if (jq) { jq(node).val(value); } else { node.value = value; } }',
-    '      catch (e) { node.value = value; }',
+    '      if (nodeIsControl(node)) {',
+    '        try { if (jq) { jq(node).val(value); } else { node.value = value; } } catch (e) { node.value = value; }',
+    '      } else {',
+    '        try { node.textContent = value; } catch (e) {}',
+    '      }',
     '      setCount++;',
-    '      try { readBack = String(jq ? jq(node).val() : node.value); }',
-    '      catch (e) { readBack = String(node.value); }',
+    '      try { readBack = String(readValue(node, jq)); } catch (e) { readBack = ""; }',
     '      frameUsed = (w === window ? "top" : "iframe");',
     '    }',
     '  }',
@@ -184,7 +198,8 @@ function matchTags(m) {
   var tags = [];
   if (m.disabled) { tags.push('<span class="tag warn">desabilitado (_)</span>'); }
   if (m.child) { tags.push('<span class="tag">linha ' + esc(m.child) + '</span>'); }
-  if (m.type) { tags.push('<span class="tag">' + esc(m.type) + '</span>'); }
+  if (m.type === 'span') { tags.push('<span class="tag">somente leitura</span>'); }
+  else if (m.type) { tags.push('<span class="tag">' + esc(m.type) + '</span>'); }
   return tags.join(' ');
 }
 
@@ -366,7 +381,7 @@ function buildDumpExpr() {
     '    var jq = null;',
     '    try { jq = w.jQuery || w.$ || null; } catch (e) {}',
     '    var nodes;',
-    '    try { nodes = doc.querySelectorAll("input, select, textarea"); } catch (e) { continue; }',
+    '    try { nodes = doc.querySelectorAll("input, select, textarea, span[name]"); } catch (e) { continue; }',
     '    var url = null;',
     '    try { url = String(w.location.href); } catch (e) {}',
     '    var count = 0;',
@@ -395,7 +410,7 @@ function buildDumpExpr() {
     '      var value;',
     '      if (type === "checkbox") { value = node.checked ? "true" : "false"; }',
     '      else if (type === "radio") { value = node.value || "on"; }',
-    '      else { try { value = jq ? jq(node).val() : node.value; } catch (e) { value = node.value; } }',
+    '      else { value = readValue(node, jq); }',
     '      if (value == null) { value = ""; }',
     '',
     '      var childMatch = String(raw).match(/___(\\d+)$/);',
@@ -528,6 +543,239 @@ function copyDump() {
 }
 
 // ---------------------------------------------------------------------------
+// Solicitação: documentId a partir do nº da solicitação (CU-03)
+// ---------------------------------------------------------------------------
+//
+// Fluxo (roda automatico ao abrir o painel, sem clique):
+//   1. Le o numero da solicitacao na URL, no parametro do workflowview
+//      (app_ecm_workflowview_detailsProcessInstanceID). Ex: ...?..._detailsProcessInstanceID=717
+//   2. Consulta o dataset workflowProcess (via DatasetFactory CLIENT-SIDE, que
+//      existe no contexto do formulario Fluig) filtrando por
+//      workflowProcessPK.processInstanceId e pedindo cardDocumentId.
+//   3. cardDocumentId e o documentId da solicitacao.
+//
+// Nao garimpamos o DOM: o valor vem do proprio dataset do Fluig (autoritativo).
+// O DatasetFactory client-side devolve { columns, values }, onde values e um
+// array de objetos indexados por nome de coluna (diferente do server-side).
+// Helpers de dataset (client-side) injetados no IIFE. Reaproveitados pela
+// resolucao do documentId e pelo "setar no banco".
+var DATASET_HELPERS = [
+  '  // Frame que expoe o DatasetFactory client-side do Fluig.',
+  '  function findDatasetWin(wins) {',
+  '    for (var i = 0; i < wins.length; i++) {',
+  '      try { if (wins[i].DatasetFactory && typeof wins[i].DatasetFactory.getDataset === "function") { return wins[i]; } } catch (e) {}',
+  '    }',
+  '    return null;',
+  '  }',
+  '  // Numero da solicitacao a partir da URL (param do workflowview).',
+  '  function findNumProcess(wins) {',
+  '    for (var i = 0; i < wins.length; i++) {',
+  '      var href;',
+  '      try { href = String(wins[i].location.href); } catch (e) { continue; }',
+  '      var m = href.match(/[?&]app_ecm_workflowview_detailsProcessInstanceID=(\\d+)/i);',
+  '      if (m) { return m[1]; }',
+  '    }',
+  '    return null;',
+  '  }',
+  '  // documentId da solicitacao: workflowProcess -> cardDocumentId.',
+  '  function resolveDocId(wins) {',
+  '    var numProcess = findNumProcess(wins);',
+  '    if (!numProcess) { return { ok: false, stage: "url", message: "Número da solicitação não encontrado na URL (parâmetro app_ecm_workflowview_detailsProcessInstanceID). Abra a extensão sobre uma solicitação de workflow." }; }',
+  '    var dsWin = findDatasetWin(wins);',
+  '    if (!dsWin) { return { ok: false, stage: "dataset", numProcess: numProcess, message: "DatasetFactory não disponível no client-side (formulário ainda carregando?). Tente Recarregar." }; }',
+  '    try {',
+  '      var DF = dsWin.DatasetFactory, CT = dsWin.ConstraintType;',
+  '      var c1 = DF.createConstraint("workflowProcessPK.processInstanceId", numProcess, numProcess, CT.MUST);',
+  '      var c4 = DF.createConstraint("sqlLimit", "300", "300", CT.MUST);',
+  '      var dataset = DF.getDataset("workflowProcess", ["cardIndexDocumentId", "cardDocumentId"], [c1, c4], null);',
+  '      var values = (dataset && dataset.values) ? dataset.values : [];',
+  '      if (!values.length) { return { ok: false, stage: "empty", numProcess: numProcess, message: "Consulta ao workflowProcess retornou vazio para a solicitação " + numProcess + "." }; }',
+  '      var row = values[0];',
+  '      return { ok: true, numProcess: numProcess, documentId: (row.cardDocumentId != null ? String(row.cardDocumentId) : null), cardIndexDocumentId: (row.cardIndexDocumentId != null ? String(row.cardIndexDocumentId) : null), frame: (dsWin === window ? "top" : "iframe") };',
+  '    } catch (e) { return { ok: false, stage: "query", numProcess: numProcess, message: "Erro na consulta ao dataset: " + (e && e.message ? e.message : String(e)) }; }',
+  '  }'
+].join('\n');
+
+function buildDocumentIdExpr() {
+  return [
+    '(function () {',
+    PAGE_HELPERS,
+    DATASET_HELPERS,
+    '  return resolveDocId(collectWindows(window, [], 0));',
+    '})()'
+  ].join('\n');
+}
+
+// Grava fieldValue no campo fieldName DIRETO NO BANCO (dataset dsSetCardValue),
+// pelo documentId ja resolvido. Nao mexe no DOM. Espelha a funcao setValue do
+// time (que resolve o documentId internamente); aqui o documentId ja vem pronto.
+function buildDbSetExpr(documentId, fieldName, fieldValue) {
+  return [
+    '(function () {',
+    PAGE_HELPERS,
+    DATASET_HELPERS,
+    '  var wins = collectWindows(window, [], 0);',
+    '  var dsWin = findDatasetWin(wins);',
+    '  if (!dsWin) { return { ok: false, message: "DatasetFactory não disponível no client-side." }; }',
+    '  var documentId = ' + JSON.stringify(String(documentId)) + ';',
+    '  var fieldName = ' + JSON.stringify(String(fieldName)) + ';',
+    '  var fieldValue = ' + JSON.stringify(String(fieldValue)) + ';',
+    '  try {',
+    '    var DF = dsWin.DatasetFactory, CT = dsWin.ConstraintType;',
+    '    var c4 = DF.createConstraint("sqlLimit", "300", "300", CT.MUST);',
+    '    var c1 = DF.createConstraint("documentid", documentId, documentId, CT.MUST);',
+    '    var c2 = DF.createConstraint("fieldName", fieldName, fieldName, CT.MUST);',
+    '    var c3 = DF.createConstraint("fieldValue", fieldValue, fieldValue, CT.MUST);',
+    '    var result = DF.getDataset("dsSetCardValue", null, [c1, c2, c3, c4], null);',
+    '    var out = { ok: true, documentId: documentId, fieldName: fieldName, fieldValue: fieldValue };',
+    '    try { out.columns = (result && result.columns) ? result.columns : null; } catch (e) {}',
+    '    try { out.values = (result && result.values) ? result.values : null; } catch (e) {}',
+    '    return out;',
+    '  } catch (e) { return { ok: false, documentId: documentId, message: "Erro ao gravar no banco: " + (e && e.message ? e.message : String(e)) }; }',
+    '})()'
+  ].join('\n');
+}
+
+function renderSolicitacao(result) {
+  var status = document.getElementById('solicitacao-status');
+
+  if (!result) {
+    status.innerHTML = '<span class="err">Sem retorno.</span>';
+    render('solicitacao-output', '<span class="err">Sem retorno da página.</span>');
+    return;
+  }
+
+  if (!result.ok) {
+    status.innerHTML = '<span class="err">não resolvido</span>';
+    var head = result.numProcess
+      ? '<div class="row"><span class="k">Solicitação</span><code>' + esc(result.numProcess) + '</code></div>'
+      : '';
+    render('solicitacao-output', head +
+      '<div class="row"><span class="k">documentId</span><span class="err">' + esc(result.message) + '</span></div>');
+    return;
+  }
+
+  status.innerHTML = '<span class="ok">documentId resolvido</span>';
+  var html =
+    '<div class="row"><span class="k">Solicitação</span><code>' + esc(result.numProcess) + '</code></div>' +
+    '<div class="row"><span class="k">documentId</span><code class="ok">' + renderValue(result.documentId) + '</code></div>';
+  if (result.cardIndexDocumentId && result.cardIndexDocumentId !== result.documentId) {
+    html += '<div class="row"><span class="k">cardIndex</span><code>' + renderValue(result.cardIndexDocumentId) + '</code></div>';
+  }
+  render('solicitacao-output', html);
+}
+
+function loadSolicitacao() {
+  var status = document.getElementById('solicitacao-status');
+  status.textContent = 'Resolvendo…';
+  render('solicitacao-output', '<span class="muted">Lendo a solicitação e consultando o documentId…</span>');
+
+  evalInPage(buildDocumentIdExpr())
+    .then(renderSolicitacao)
+    .catch(function (exceptionInfo) {
+      status.innerHTML = '<span class="err">erro</span>';
+      render('solicitacao-output', '<span class="err">Erro ao resolver: ' + esc(JSON.stringify(exceptionInfo)) + '</span>');
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Setar campo no banco (resolver documentId -> confirmar -> gravar)
+// ---------------------------------------------------------------------------
+//
+// Grava direto no banco via dsSetCardValue, usando o documentId da solicitacao.
+// Diferente do "Setar campo" (que faz $(campo).val() no DOM): funciona mesmo com
+// a solicitacao finalizada, onde o DOM nao aceita a alteracao. Mesmo cuidado do
+// outro: confirmacao obrigatoria antes de aplicar (ainda mais critico, pois
+// grava no banco ignorando validacoes/logicas do formulario).
+
+var pendingDbSet = null;
+
+function dbSetResolve() {
+  var fieldName = document.getElementById('dbset-field').value.trim();
+  var value = document.getElementById('dbset-value').value; // valor vazio permitido (limpar)
+
+  if (!fieldName) {
+    render('dbset-output', '<span class="muted">Digite o nome do campo a gravar.</span>');
+    return;
+  }
+
+  render('dbset-output', '<span class="muted">Resolvendo o documentId da solicitação…</span>');
+
+  evalInPage(buildDocumentIdExpr())
+    .then(function (result) {
+      if (!result || !result.ok || !result.documentId) {
+        render('dbset-output', '<span class="err">Não consegui resolver o documentId: ' +
+          esc((result && result.message) || 'sem retorno') + '</span>');
+        return;
+      }
+      pendingDbSet = { documentId: result.documentId, numProcess: result.numProcess, fieldName: fieldName, value: value };
+      showDbSetConfirmation(pendingDbSet);
+    })
+    .catch(function (exceptionInfo) {
+      render('dbset-output', '<span class="err">Erro ao resolver: ' + esc(JSON.stringify(exceptionInfo)) + '</span>');
+    });
+}
+
+function showDbSetConfirmation(p) {
+  render('dbset-output',
+    '<div class="confirm">' +
+    '<p><strong>Confirmar gravação no banco</strong></p>' +
+    '<div class="row"><span class="k">Solicitação</span><code>' + esc(p.numProcess) + '</code></div>' +
+    '<div class="row"><span class="k">documentId</span><code>' + esc(p.documentId) + '</code></div>' +
+    '<div class="row"><span class="k">campo</span><code>' + esc(p.fieldName) + '</code></div>' +
+    '<div class="row"><span class="k">novo</span><code>' + renderValue(p.value) + '</code></div>' +
+    '<p class="muted">Grava via <code>dsSetCardValue</code> <strong>direto no banco</strong>, ' +
+    'ignorando o DOM e as validações/lógicas do formulário. Ação sensível.</p>' +
+    '<div class="field-row">' +
+    '<button id="btn-confirm-dbset" type="button" class="danger">Confirmar gravação</button>' +
+    '<button id="btn-cancel-dbset" type="button">Cancelar</button>' +
+    '</div>' +
+    '</div>'
+  );
+
+  document.getElementById('btn-confirm-dbset').addEventListener('click', function () {
+    applyDbSet();
+  });
+  document.getElementById('btn-cancel-dbset').addEventListener('click', function () {
+    pendingDbSet = null;
+    render('dbset-output', '<span class="muted">Gravação cancelada.</span>');
+  });
+}
+
+function applyDbSet() {
+  if (!pendingDbSet) {
+    render('dbset-output', '<span class="muted">Nada pendente. Preencha e clique em Setar no banco.</span>');
+    return;
+  }
+  var p = pendingDbSet;
+  render('dbset-output', '<span class="muted">Gravando no banco…</span>');
+
+  evalInPage(buildDbSetExpr(p.documentId, p.fieldName, p.value))
+    .then(function (result) {
+      pendingDbSet = null;
+      if (!result || !result.ok) {
+        render('dbset-output', '<span class="err">Falha ao gravar: ' +
+          esc((result && result.message) || 'sem retorno') + '</span>');
+        return;
+      }
+      var html =
+        '<div class="row"><span class="k">Gravado</span><span class="ok">no banco via dsSetCardValue</span></div>' +
+        '<div class="row"><span class="k">documentId</span><code>' + esc(result.documentId) + '</code></div>' +
+        '<div class="row"><span class="k">campo</span><code>' + esc(result.fieldName) + '</code></div>' +
+        '<div class="row"><span class="k">valor</span><code>' + renderValue(result.fieldValue) + '</code></div>';
+      if (result.values) {
+        html += '<div class="row"><span class="k">retorno</span><code>' + esc(JSON.stringify(result.values)) + '</code></div>';
+      }
+      html += '<p class="muted">A gravação foi no banco (não no DOM aberto). Recarregue o formulário para ver o valor atualizado.</p>';
+      render('dbset-output', html);
+    })
+    .catch(function (exceptionInfo) {
+      pendingDbSet = null;
+      render('dbset-output', '<span class="err">Erro ao gravar: ' + esc(JSON.stringify(exceptionInfo)) + '</span>');
+    });
+}
+
+// ---------------------------------------------------------------------------
 // Wiring
 // ---------------------------------------------------------------------------
 
@@ -544,4 +792,14 @@ document.getElementById('set-value').addEventListener('keydown', function (e) {
 document.getElementById('btn-dump').addEventListener('click', dumpFields);
 document.getElementById('btn-copy-dump').addEventListener('click', copyDump);
 
+document.getElementById('btn-reload-solicitacao').addEventListener('click', loadSolicitacao);
+
+document.getElementById('btn-dbset').addEventListener('click', dbSetResolve);
+document.getElementById('dbset-value').addEventListener('keydown', function (e) {
+  if (e.key === 'Enter') { dbSetResolve(); }
+});
+
 document.getElementById('read-field').focus();
+
+// Resolve o documentId da solicitacao automaticamente ao abrir o painel.
+loadSolicitacao();

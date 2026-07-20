@@ -75,8 +75,23 @@ dataset) que hoje só são acessíveis digitando comandos no console.
 **Fluxo desejado com a extensão:**
 1. Visualizar num painel as variáveis de contexto relevantes já resolvidas
    (sem digitar comando).
-2. (A definir com a equipe quais variáveis entram no primeiro release — ver
-   seção "Pontos a confirmar".)
+
+**Decidido (1ª fatia — implementada):** o foco é o **documentId da
+solicitação**, resolvido automaticamente ao abrir o painel:
+- O **número da solicitação** vem do parâmetro de URL
+  `app_ecm_workflowview_detailsProcessInstanceID` (na `pageworkflowview`).
+- O **documentId** é resolvido consultando o dataset `workflowProcess` (via
+  `DatasetFactory` **client-side** do Fluig, disponível no contexto do
+  formulário), filtrando por `workflowProcessPK.processInstanceId` e lendo o
+  campo `cardDocumentId`.
+
+**Princípio adotado:** variáveis de contexto que na origem são **server-side**
+(nº da solicitação, documentId etc.) são obtidas pelo **valor autoritativo** —
+API/dataset do próprio Fluig — e **não** por garimpo de hidden input, global
+injetada ou heurística sobre o HTML (frágil e dependente do ambiente).
+
+Próximas fatias (mesmo padrão): usuário logado, atividade atual e outras
+variáveis a definir com a equipe.
 
 ---
 

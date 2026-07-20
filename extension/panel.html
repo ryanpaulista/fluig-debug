@@ -122,6 +122,15 @@
     <h1>Fluig Debug</h1>
 
     <section>
+      <h2>Solicitação</h2>
+      <div class="field-row">
+        <button id="btn-reload-solicitacao" type="button">Recarregar</button>
+        <span id="solicitacao-status" class="muted"></span>
+      </div>
+      <div id="solicitacao-output" class="out"></div>
+    </section>
+
+    <section>
       <h2>Ler campo</h2>
       <p class="muted">
         Lê o valor pelo nome. Trata campo desabilitado (<code>_</code>) e linhas
@@ -146,6 +155,23 @@
         <button id="btn-set" type="button">Setar</button>
       </div>
       <div id="set-output" class="out"></div>
+    </section>
+
+    <section>
+      <h2>Setar campo no banco</h2>
+      <p class="muted">
+        Grava o valor <strong>direto no banco</strong> (dataset
+        <code>dsSetCardValue</code>) usando o <code>documentId</code> da
+        solicitação — não mexe no DOM. Use quando o
+        <code>$(campo).val()</code> não resolve (ex.: solicitação finalizada).
+        Mostra confirmação antes de aplicar.
+      </p>
+      <div class="field-row">
+        <input id="dbset-field" type="text" placeholder="nome do campo" />
+        <input id="dbset-value" type="text" placeholder="novo valor" />
+        <button id="btn-dbset" type="button">Setar no banco</button>
+      </div>
+      <div id="dbset-output" class="out"></div>
     </section>
 
     <section>
