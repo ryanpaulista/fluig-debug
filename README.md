@@ -210,6 +210,93 @@ Como funciona (não garimpa o DOM):
 > contexto (usuário, atividade etc.) ficam para fatias seguintes, no mesmo
 > padrão (valor via API/dataset do Fluig, não via DOM).
 
+## Como testar o autocomplete de nome de campo
+
+Os três campos de **nome** (Ler, Setar e Setar no banco) sugerem os campos que
+existem na página enquanto você digita — você não precisa mais saber o nome
+exato de cabeça.
+
+1. Recarregue a extensão e reabra o DevTools sobre um formulário Fluig.
+2. Na seção **Ler campo**, comece a digitar parte de um nome (ex: `emp`).
+3. **Esperado:** abre uma lista abaixo do input com os campos que casam,
+   mostrando para cada um os mesmos badges do resultado do Ler
+   (**desabilitado (_)**, **somente leitura**, tipo, tabela) e um **preview do
+   valor atual**.
+4. Navegue com **↑/↓**, escolha com **Enter** (ou clique), feche com **Esc**.
+   Tecle **↓** com o input vazio para listar todos os campos da página.
+
+Detalhes de comportamento:
+
+- **Enter escolhe, não executa.** Com um item destacado, o Enter só preenche o
+  input; aperte Enter de novo para rodar o Ler. Digitar o nome completo e teclar
+  Enter (sem destacar nada) continua funcionando como antes.
+- **Nome lógico por padrão.** A lista mostra o nome "limpo" — é o que você digita
+  no dia a dia, já que a extensão resolve o `_` e o `___N` sozinha. Um campo de
+  tabela pai-filho aparece uma vez, com o badge **N linha(s)**.
+- **Linhas sob demanda.** Digite `___` para trocar para o modo por linha e ver
+  `campo___1`, `campo___2`… Isso é o atalho para o caso em que o **Setar**
+  bloqueia por ambiguidade e pede a ocorrência exata. O número também filtra:
+  `campo___1` mostra as linhas 1, 10, 11…
+- **Índice em cache com TTL de 3s.** O formulário Fluig muda em runtime (linha
+  nova na tabela filha, campo habilitado/desabilitado), então a varredura é
+  revalidada enquanto você digita — sem passar de uma varredura a cada 3
+  segundos. O índice também é invalidado quando a página navega.
+- **Botões ficam fora** (`button`/`submit`/`reset`/`image`): têm `name`, mas
+  nunca são alvo de ler/setar. O índice é um subconjunto do que o Ler acha —
+  nunca o contrário.
+- Se a varredura falhar (formulário ainda carregando, página navegando), o
+  autocomplete simplesmente não abre e o input continua aceitando o nome
+  digitado à mão — a sugestão é conveniência, não pré-requisito.
+
+## Como testar o histórico por seção
+
+Cada seção de interação (**Ler**, **Setar**, **Setar no banco**) tem um botão
+**Histórico (N)** que abre a lista do que passou por ali nesta sessão. O uso
+principal: você setou um valor errado e quer **voltar o anterior**.
+
+1. Recarregue a extensão e reabra o DevTools sobre um formulário Fluig.
+2. Faça algumas leituras e ao menos uma alteração.
+3. Clique em **Histórico** na seção. **Esperado:** as entradas mais recentes
+   primeiro, cada uma com o horário, o campo e:
+   - no **Ler**: os valores lidos, com botão **Ler de novo**;
+   - no **Setar**: **anterior → novo**, com botão **Restaurar valor anterior**;
+   - no **Setar no banco**: `documentId`, **anterior (DOM)**, **gravado**.
+4. Clique em **Restaurar valor anterior**. **Esperado:** os inputs são
+   preenchidos com o campo e o valor antigo, e a **tela de confirmação** abre
+   direto — você só clica em **Confirmar**.
+5. **Limpar** zera o histórico daquela seção.
+
+Detalhes de comportamento:
+
+- **Efêmero de propósito.** O histórico vive só em memória do painel: sobrevive à
+  navegação da página (útil — dá para rever o que você setou antes de recarregar
+  o formulário) e **desaparece quando o DevTools é fechado**. Nada vai para
+  `storage`, mesmo princípio do dump.
+- **Restaurar não pula a confirmação.** Ele encurta o caminho (preenche e já abre
+  a confirmação), mas a alteração em si continua exigindo o clique em Confirmar —
+  a regra de que toda ação que altera estado é confirmada vale igual aqui.
+- **Leitura repetida colapsa.** Ler o mesmo campo com o mesmo valor várias vezes
+  vira uma entrada com contador (`3×`), em vez de empurrar o resto para fora.
+  Alteração nunca colapsa: cada gravação é um evento próprio.
+- **Só registra o que aconteceu.** O `Setar` grava no histórico o *read-back*
+  (o valor que de fato ficou no campo), não o que foi pedido. Alteração que
+  falhou ou foi cancelada não entra. Leitura **não encontrada** entra — saber que
+  o campo não existia naquele momento é informação de debug.
+- **Limite de 50 entradas** por seção; as mais antigas caem fora.
+
+### O "anterior (DOM)" do Setar no banco
+
+O `dsSetCardValue` grava, mas **não existe leitura correspondente** — então o
+valor anterior dessa seção sai do **DOM**, e a UI rotula assim em toda parte
+(inclusive na confirmação, que agora mostra o que está sendo sobrescrito).
+
+No caso principal da seção — **solicitação finalizada** — o `<span>` carrega
+justamente o valor persistido, então na prática costuma bater com o banco. Mas
+isso **não é garantido**: se o DOM estiver defasado, o "anterior" será o do DOM,
+não o do banco. Quando não é possível afirmar um valor (campo ausente no DOM, ou
+ocorrências espelhadas com valores divergentes), aparece **não disponível** e o
+**Restaurar não é oferecido** — melhor não oferecer do que restaurar um chute.
+
 ## Como testar o "Setar campo no banco"
 
 Além do **Setar campo** (que faz `$(campo).val()` no DOM), existe o **Setar campo

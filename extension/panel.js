@@ -192,6 +192,110 @@ function buildRowExpr(tablename, child) {
 }
 
 // ---------------------------------------------------------------------------
+// Indice de campos (base do autocomplete)
+// ---------------------------------------------------------------------------
+//
+// Varre os mesmos nos que o dump (input/select/textarea/span[name]) em todos os
+// frames e devolve DUAS listas:
+//   fields — um item por NOME LOGICO, que e o que o usuario digita no dia a dia
+//            (a extensao resolve o "_" e o "___N" sozinha). Traz a contagem de
+//            ocorrencias e quantas linhas ___N existem.
+//   rows   — um item por ocorrencia ___N (name cru). Usada so quando o usuario
+//            digita "___" para mirar uma linha especifica de tabela pai-filho.
+//
+// O valor vem TRUNCADO em VALUE_MAX: no dropdown ele e um preview de uma linha,
+// e isso evita arrastar textarea inteira na serializacao do eval.
+//
+// Botoes (button/submit/reset/image) ficam fora: tem name mas nunca sao alvo de
+// ler/setar, so poluiriam a lista. O indice e, portanto, um SUBCONJUNTO do que o
+// "Ler" consegue achar — nunca o contrario.
+function buildFieldIndexExpr() {
+  return [
+    '(function () {',
+    PAGE_HELPERS,
+    '  var VALUE_MAX = 60;',
+    '  var MAX_FIELDS = 600;',
+    '  var MAX_ROWS = 1200;',
+    '  function preview(v) {',
+    '    var s = String(v == null ? "" : v).replace(/\\s+/g, " ").replace(/^ | $/g, "");',
+    '    return s.length > VALUE_MAX ? s.slice(0, VALUE_MAX) + "\\u2026" : s;',
+    '  }',
+    '',
+    '  var wins = collectWindows(window, [], 0);',
+    '  var groups = {};',
+    '  var order = [];',
+    '  var rows = [];',
+    '  var rowSeen = {};',
+    '',
+    '  for (var i = 0; i < wins.length; i++) {',
+    '    var w = wins[i];',
+    '    var doc;',
+    '    try { doc = w.document; } catch (e) { continue; }',
+    '    var jq = null;',
+    '    try { jq = w.jQuery || w.$ || null; } catch (e) {}',
+    '    var nodes;',
+    '    try { nodes = doc.querySelectorAll("input, select, textarea, span[name]"); } catch (e) { continue; }',
+    '',
+    '    for (var j = 0; j < nodes.length; j++) {',
+    '      var node = nodes[j];',
+    '      var nm = node.getAttribute("name");',
+    '      var id = node.id || null;',
+    '      var raw = nm || id;',
+    '      if (!raw) { continue; }',
+    '      var lg = logical(raw);',
+    '      if (!lg) { continue; }',
+    '',
+    '      var ntype = String(node.type || node.tagName || "").toLowerCase();',
+    '      if (ntype === "button" || ntype === "submit" || ntype === "reset" || ntype === "image") { continue; }',
+    '',
+    '      var childMatch = String(raw).match(/___(\\d+)$/);',
+    '      var child = childMatch ? childMatch[1] : null;',
+    '      var disabled = /^_/.test(String(nm || "")) || /^_/.test(String(id || ""));',
+    '      var table = null;',
+    '      try { var t = node.closest ? node.closest("table[tablename]") : null; if (t) { table = t.getAttribute("tablename"); } } catch (e) {}',
+    '      var val = preview(readValue(node, jq));',
+    '',
+    '      var g = groups[lg];',
+    '      if (!g) {',
+    '        g = { logical: lg, occurrences: 0, rowCount: 0, disabled: false, type: ntype, table: table, value: val };',
+    '        groups[lg] = g;',
+    '        order.push(lg);',
+    '      }',
+    '      g.occurrences++;',
+    '      if (child !== null) { g.rowCount++; }',
+    '      if (disabled) { g.disabled = true; }',
+    '      if (!g.table && table) { g.table = table; }',
+    '      // Campo espelhado do Fluig costuma ter uma copia vazia: prefere o',
+    '      // primeiro valor NAO vazio para o preview nao mentir "(vazio)".',
+    '      if (!g.value && val) { g.value = val; }',
+    '',
+    '      if (child !== null && !rowSeen[raw]) {',
+    '        rowSeen[raw] = 1;',
+    '        rows.push({ name: raw, logical: lg, child: child, table: table, disabled: disabled, type: ntype, value: val });',
+    '      }',
+    '    }',
+    '  }',
+    '',
+    '  order.sort();',
+    '  var fields = [];',
+    '  for (var k = 0; k < order.length; k++) { fields.push(groups[order[k]]); }',
+    '  rows.sort(function (a, b) {',
+    '    if (a.logical !== b.logical) { return a.logical < b.logical ? -1 : 1; }',
+    '    return Number(a.child) - Number(b.child);',
+    '  });',
+    '',
+    '  return {',
+    '    fields: fields.slice(0, MAX_FIELDS),',
+    '    rows: rows.slice(0, MAX_ROWS),',
+    '    fieldsTotal: fields.length,',
+    '    rowsTotal: rows.length,',
+    '    framesScanned: wins.length',
+    '  };',
+    '})()'
+  ].join('\n');
+}
+
+// ---------------------------------------------------------------------------
 // Setar campo
 // ---------------------------------------------------------------------------
 
@@ -271,6 +375,504 @@ function matchTags(m) {
 }
 
 // ---------------------------------------------------------------------------
+// UI — Historico por secao
+// ---------------------------------------------------------------------------
+//
+// Um historico independente por secao de interacao (ler / setar / setar no
+// banco), com botao "Histórico (N)" que abre e fecha o bloco.
+//
+// EFEMERO DE PROPOSITO: vive so em memoria do painel. O painel do DevTools
+// mantem seu contexto JS enquanto o F12 esta aberto (sobrevive a navegacao da
+// pagina), e some quando o DevTools fecha. Nada vai para storage — o mesmo
+// principio do dump, que tambem nao persiste.
+//
+// O valor de um histerico de setar e poder VOLTAR: cada entrada guarda o valor
+// anterior e o novo, e o "Restaurar" devolve o anterior.
+var HISTORY_MAX = 50;
+var histories = { read: [], set: [], dbset: [] };
+// Id proprio por entrada: o "Restaurar" busca por id, nao por indice. Indice
+// mudaria embaixo de um bloco ja renderizado quando uma entrada nova entra.
+var historySeq = 0;
+
+var HISTORY_UI = {
+  read: { box: 'read-history', button: 'btn-read-history' },
+  set: { box: 'set-history', button: 'btn-set-history' },
+  dbset: { box: 'dbset-history', button: 'btn-dbset-history' }
+};
+
+function hhmmss(date) {
+  function pad(n) { return n < 10 ? '0' + n : String(n); }
+  return pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());
+}
+
+function pushHistory(kind, entry) {
+  var list = histories[kind];
+  entry.id = ++historySeq;
+  entry.at = new Date();
+  entry.repeat = 1;
+
+  // Leitura repetida do mesmo campo com o mesmo valor colapsa em contador: ler
+  // 5x para acompanhar um campo nao deve empurrar o resto do historico para
+  // fora. Acao de escrita nunca colapsa — cada gravacao e um evento proprio.
+  if (kind === 'read' && list.length) {
+    var prev = list[0];
+    if (prev.typed === entry.typed && prev.signature === entry.signature) {
+      prev.repeat++;
+      prev.at = entry.at;
+      renderHistory(kind);
+      return;
+    }
+  }
+
+  list.unshift(entry);
+  if (list.length > HISTORY_MAX) { list.length = HISTORY_MAX; }
+  renderHistory(kind);
+}
+
+function findHistoryEntry(kind, id) {
+  var list = histories[kind];
+  for (var i = 0; i < list.length; i++) {
+    if (list[i].id === id) { return list[i]; }
+  }
+  return null;
+}
+
+// Rotulo do botao com a contagem, para dar pista de que ha algo la dentro.
+function paintHistoryButton(kind) {
+  var btn = document.getElementById(HISTORY_UI[kind].button);
+  var n = histories[kind].length;
+  btn.textContent = n ? 'Histórico (' + n + ')' : 'Histórico';
+}
+
+function historyItemHtml(kind, e) {
+  var head =
+    '<div class="row"><span class="hist-time">' + hhmmss(e.at) + '</span>' +
+    '<code>' + esc(e.label) + '</code>' + (e.tags ? ' ' + e.tags : '') +
+    (e.repeat > 1 ? ' <span class="tag">' + e.repeat + '×</span>' : '') + '</div>';
+
+  var body = e.rows.map(function (r) {
+    return '<div class="row"><span class="k">' + esc(r.k) + '</span>' + r.v + '</div>';
+  }).join('');
+
+  var actions = '';
+  if (e.canRestore) {
+    actions = '<div class="field-row"><button type="button" data-hist-restore="' + kind + ':' + e.id + '">' +
+      'Restaurar valor anterior</button></div>';
+  } else if (kind === 'read') {
+    actions = '<div class="field-row"><button type="button" data-hist-reread="' + e.id + '">' +
+      'Ler de novo</button></div>';
+  }
+
+  return '<div class="hist-item">' + head + body + actions + '</div>';
+}
+
+function renderHistory(kind) {
+  paintHistoryButton(kind);
+
+  var box = document.getElementById(HISTORY_UI[kind].box);
+  // Fechado: nao gasta render. Reabrir chama renderHistory de novo.
+  if (box.style.display !== 'block') { return; }
+
+  var list = histories[kind];
+  var head =
+    '<div class="hist-head"><strong>Histórico</strong> ' +
+    '<span class="muted">só nesta sessão do DevTools</span>' +
+    (list.length ? '<button type="button" data-hist-clear="' + kind + '">Limpar</button>' : '') +
+    '</div>';
+
+  if (!list.length) {
+    box.innerHTML = head + '<p class="muted">Nenhum registro ainda nesta sessão.</p>';
+    return;
+  }
+
+  box.innerHTML = head + list.map(function (e) { return historyItemHtml(kind, e); }).join('');
+}
+
+function toggleHistory(kind) {
+  var box = document.getElementById(HISTORY_UI[kind].box);
+  var open = box.style.display === 'block';
+  box.style.display = open ? 'none' : 'block';
+  if (!open) { renderHistory(kind); }
+}
+
+// ---------------------------------------------------------------------------
+// UI — Autocomplete de nome de campo
+// ---------------------------------------------------------------------------
+//
+// Plugado nos tres inputs de NOME de campo (Ler / Setar / Setar no banco). Os
+// inputs de VALOR nao tem autocomplete.
+//
+// Indice em cache: uma varredura serve para os tres inputs e para varias teclas.
+// O TTL e curto porque o formulario Fluig muda em runtime (linha nova em tabela
+// pai-filho, campo habilitado/desabilitado), mas evita uma varredura por tecla.
+var fieldIndex = null;
+var fieldIndexAt = 0;
+var fieldIndexPending = null;
+var INDEX_TTL_MS = 3000;
+var MAX_SUGGESTIONS = 50;
+var EMPTY_INDEX = { fields: [], rows: [], fieldsTotal: 0, rowsTotal: 0 };
+
+function ensureFieldIndex() {
+  if (fieldIndex && (Date.now() - fieldIndexAt) < INDEX_TTL_MS) {
+    return Promise.resolve(fieldIndex);
+  }
+  // Uma varredura em voo por vez: as 3 caixas compartilham a mesma promise.
+  if (fieldIndexPending) { return fieldIndexPending; }
+
+  fieldIndexPending = evalInPage(buildFieldIndexExpr())
+    .then(function (result) {
+      fieldIndex = result || EMPTY_INDEX;
+      fieldIndexAt = Date.now();
+      fieldIndexPending = null;
+      return fieldIndex;
+    })
+    .catch(function () {
+      fieldIndexPending = null;
+      // Autocomplete e conveniencia: se a varredura falhar (pagina navegando,
+      // formulario ainda carregando), o input segue funcionando na digitacao
+      // manual. Nao poluimos a UI com erro por causa da sugestao.
+      return fieldIndex || EMPTY_INDEX;
+    });
+
+  return fieldIndexPending;
+}
+
+function invalidateFieldIndex() {
+  fieldIndex = null;
+  fieldIndexAt = 0;
+}
+
+// Filtra o indice pelo que foi digitado. Dois modos:
+//   normal    — casa o NOME LOGICO; prefixo vem antes de substring no ranking.
+//   por linha — disparado quando o texto contem "___": lista as ocorrencias
+//               ___N. O que vem antes do "___" filtra o nome, o que vem depois
+//               filtra o numero da linha (ex: "desc___1" -> linhas 1, 10, 11...).
+function filterSuggestions(index, typed) {
+  var q = String(typed || '').trim().toLowerCase();
+  var sepAt = q.indexOf('___');
+
+  if (sepAt >= 0) {
+    var namePart = q.slice(0, sepAt);
+    var childPart = q.slice(sepAt + 3);
+    return (index.rows || []).filter(function (r) {
+      if (namePart && String(r.logical).toLowerCase().indexOf(namePart) < 0) { return false; }
+      if (childPart && String(r.child).indexOf(childPart) !== 0) { return false; }
+      return true;
+    }).map(function (r) {
+      return { label: r.name, item: r, row: true };
+    });
+  }
+
+  var pool = index.fields || [];
+  var picked;
+  if (!q) {
+    picked = pool;
+  } else {
+    var starts = [];
+    var contains = [];
+    pool.forEach(function (f) {
+      var at = String(f.logical).toLowerCase().indexOf(q);
+      if (at === 0) { starts.push(f); }
+      else if (at > 0) { contains.push(f); }
+    });
+    picked = starts.concat(contains);
+  }
+  return picked.map(function (f) {
+    return { label: f.logical, item: f, row: false };
+  });
+}
+
+// Badges da sugestao. Reaproveita o vocabulario do matchTags (mesmas tags que o
+// resultado do Ler usa) e acrescenta tabela / contagens.
+function suggestionTags(s) {
+  var item = s.item;
+  var tags = [];
+  if (item.disabled) { tags.push('<span class="tag warn">desabilitado (_)</span>'); }
+  if (s.row) { tags.push('<span class="tag">linha ' + esc(item.child) + '</span>'); }
+  else if (item.rowCount) { tags.push('<span class="tag">' + item.rowCount + ' linha(s)</span>'); }
+  else if (item.occurrences > 1) { tags.push('<span class="tag">' + item.occurrences + ' ocorrência(s)</span>'); }
+  if (item.table) { tags.push('<span class="tag">' + esc(item.table) + '</span>'); }
+  if (item.type === 'span') { tags.push('<span class="tag">somente leitura</span>'); }
+  else if (item.type) { tags.push('<span class="tag">' + esc(item.type) + '</span>'); }
+  return tags.join(' ');
+}
+
+// Liga um dropdown de sugestoes a um input. Uma instancia por input, com estado
+// proprio (a lista visivel e o item ativo).
+//
+// A lista NAO abre so por foco: abre ao digitar (o pedido da feature) ou com a
+// seta para baixo, que serve de "me mostra tudo". Assim o painel nao abre com um
+// dropdown gigante na cara ao carregar.
+function attachAutocomplete(inputId, boxId) {
+  var input = document.getElementById(inputId);
+  var box = document.getElementById(boxId);
+  var shown = [];
+  var hidden = 0;
+  var active = -1;
+  var open = false;
+
+  function close() {
+    open = false;
+    active = -1;
+    box.style.display = 'none';
+    box.innerHTML = '';
+  }
+
+  function foot() {
+    var parts = ['↑/↓ navega · Enter escolhe · Esc fecha'];
+    if (hidden > 0) { parts.push('+' + hidden + ' não exibido(s) — refine a busca'); }
+    // Dica so faz sentido quando ha linha para mirar e ainda nao estamos no
+    // modo por linha.
+    var hasRows = shown.some(function (s) { return !s.row && s.item.rowCount; });
+    if (hasRows) { parts.push('digite <code>___</code> para mirar uma linha'); }
+    if (fieldIndex && fieldIndex.fieldsTotal > (fieldIndex.fields || []).length) {
+      parts.push('índice truncado em ' + fieldIndex.fields.length + ' de ' + fieldIndex.fieldsTotal + ' campos');
+    }
+    return parts.join(' · ');
+  }
+
+  function draw() {
+    if (!shown.length) {
+      box.innerHTML = '<div class="ac-empty muted">nenhum campo casa com isso</div>';
+    } else {
+      var html = '';
+      shown.forEach(function (s, i) {
+        html +=
+          '<div class="ac-item" data-i="' + i + '">' +
+          '<div class="ac-name"><code>' + esc(s.label) + '</code> ' + suggestionTags(s) + '</div>' +
+          '<div class="ac-val">' + renderValue(s.item.value) + '</div>' +
+          '</div>';
+      });
+      html += '<div class="ac-foot muted">' + foot() + '</div>';
+      box.innerHTML = html;
+    }
+    box.style.display = 'block';
+    open = true;
+    paintActive();
+  }
+
+  // Move so o destaque, sem reconstruir a lista — o innerHTML inteiro a cada
+  // seta/hover causaria flicker e mataria o elemento sob o cursor.
+  function paintActive() {
+    var items = box.querySelectorAll('.ac-item');
+    for (var i = 0; i < items.length; i++) {
+      if (i === active) { items[i].classList.add('active'); }
+      else { items[i].classList.remove('active'); }
+    }
+    if (active >= 0 && items[active] && items[active].scrollIntoView) {
+      items[active].scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  function refresh() {
+    ensureFieldIndex().then(function (index) {
+      // A varredura e assincrona: se o usuario saiu do input nesse meio-tempo,
+      // nao abrimos a lista por cima de outra coisa.
+      if (document.activeElement !== input) { return; }
+      // Indice vazio = varredura falhou ou pagina sem campos. Melhor nao abrir
+      // nada do que abrir um "nenhum campo casa com isso" enganoso.
+      if (!(index.fields || []).length && !(index.rows || []).length) {
+        close();
+        return;
+      }
+      var all = filterSuggestions(index, input.value);
+      hidden = Math.max(0, all.length - MAX_SUGGESTIONS);
+      shown = all.slice(0, MAX_SUGGESTIONS);
+      if (active >= shown.length) { active = shown.length - 1; }
+      draw();
+    });
+  }
+
+  function pick(i) {
+    if (i < 0 || i >= shown.length) { return; }
+    input.value = shown[i].label;
+    close();
+  }
+
+  input.addEventListener('input', function () {
+    active = -1;
+    refresh();
+  });
+
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!open || !shown.length) { refresh(); return; }
+      if (active < 0) {
+        // Nada destacado ainda: ↓ vai para o primeiro, ↑ para o ULTIMO.
+        active = e.key === 'ArrowDown' ? 0 : shown.length - 1;
+      } else {
+        active = (active + (e.key === 'ArrowDown' ? 1 : -1) + shown.length) % shown.length;
+      }
+      paintActive();
+      return;
+    }
+
+    if (e.key === 'Enter') {
+      // Enter com item ativo SO escolhe a sugestao — nao dispara Ler/Setar. O
+      // stopImmediatePropagation impede o handler de Enter que o Wiring registra
+      // neste mesmo input (por isso o attach vem antes dele).
+      if (open && active >= 0) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        pick(active);
+      }
+      return;
+    }
+
+    if (e.key === 'Escape') {
+      if (open) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        close();
+      }
+      return;
+    }
+
+    if (e.key === 'Tab') {
+      if (open && active >= 0) { pick(active); }
+      else { close(); }
+    }
+  });
+
+  // mousedown (nao click) + preventDefault: o click chegaria depois do blur, que
+  // ja teria fechado a lista e removido o item de baixo do cursor.
+  box.addEventListener('mousedown', function (e) {
+    var el = e.target.closest ? e.target.closest('.ac-item') : null;
+    if (!el) { return; }
+    e.preventDefault();
+    pick(Number(el.getAttribute('data-i')));
+  });
+
+  box.addEventListener('mouseover', function (e) {
+    var el = e.target.closest ? e.target.closest('.ac-item') : null;
+    if (!el) { return; }
+    var i = Number(el.getAttribute('data-i'));
+    if (i === active) { return; }
+    active = i;
+    paintActive();
+  });
+
+  input.addEventListener('blur', close);
+}
+
+// ---------------------------------------------------------------------------
+// Historico — registro de cada acao
+// ---------------------------------------------------------------------------
+
+// Uma leitura. `matches` vazio = nao encontrado (fica no historico tambem: saber
+// que o campo NAO existia naquele momento e informacao de debug).
+function recordRead(typed, matches) {
+  var rows;
+  if (!matches.length) {
+    rows = [{ k: 'resultado', v: '<span class="err">não encontrado</span>' }];
+  } else {
+    rows = matches.map(function (m) {
+      return { k: m.name === typed ? 'valor' : m.name, v: '<code>' + renderValue(m.value) + '</code>' };
+    });
+  }
+
+  pushHistory('read', {
+    label: typed,
+    tags: matches.length === 1 ? matchTags(matches[0]) : '',
+    rows: rows,
+    typed: typed,
+    // Assinatura para colapsar leituras repetidas identicas em "N×".
+    signature: matches.map(function (m) { return m.name + '=' + m.value; }).join('|'),
+    canRestore: false
+  });
+}
+
+// Uma alteracao no DOM. `newValue` e o read-back (o que de fato ficou no campo),
+// nao o que foi pedido.
+function recordSet(rawName, oldValue, newValue, target) {
+  pushHistory('set', {
+    label: rawName,
+    tags: target ? matchTags(target) : '',
+    rows: [
+      { k: 'anterior', v: '<code>' + renderValue(oldValue) + '</code>' },
+      { k: 'novo', v: '<code>' + renderValue(newValue) + '</code>' }
+    ],
+    fieldName: rawName,
+    oldValue: oldValue,
+    canRestore: true
+  });
+}
+
+// Uma gravacao no banco. `oldValue` null = nao foi possivel determinar o valor
+// anterior no DOM (campo ausente ou ocorrencias com valores divergentes).
+function recordDbSet(fieldName, documentId, oldValue, newValue) {
+  var rows = [
+    { k: 'documentId', v: '<code>' + esc(documentId) + '</code>' },
+    {
+      k: 'anterior (DOM)',
+      v: oldValue === null
+        ? '<span class="muted">não disponível</span>'
+        : '<code>' + renderValue(oldValue) + '</code>'
+    },
+    { k: 'gravado', v: '<code>' + renderValue(newValue) + '</code>' }
+  ];
+
+  pushHistory('dbset', {
+    label: fieldName,
+    tags: '',
+    rows: rows,
+    fieldName: fieldName,
+    oldValue: oldValue,
+    // Sem valor anterior confiavel nao ha o que restaurar.
+    canRestore: oldValue !== null
+  });
+}
+
+// Valor atual de um campo no DOM a partir dos matches do buildFindExpr. Devolve
+// null quando nao da para afirmar UM valor: campo ausente, ou ocorrencias
+// espelhadas com valores divergentes. Preferimos "não disponível" a chutar.
+function pickDomValue(matches) {
+  if (!matches || !matches.length) { return null; }
+  var exact = matches.filter(function (m) { return m.exact; });
+  var pool = exact.length ? exact : matches;
+  var distinct = [];
+  pool.forEach(function (m) {
+    if (distinct.indexOf(m.value) < 0) { distinct.push(m.value); }
+  });
+  return distinct.length === 1 ? distinct[0] : null;
+}
+
+// ---------------------------------------------------------------------------
+// Historico — acoes das entradas
+// ---------------------------------------------------------------------------
+
+// Restaurar: preenche os inputs da secao com o valor ANTERIOR e ja dispara o
+// passo de resolucao, caindo direto na confirmacao. Um clique para chegar la,
+// mas a alteracao em si continua passando pela confirmacao obrigatoria.
+function restoreFromHistory(kind, id) {
+  var e = findHistoryEntry(kind, id);
+  if (!e || !e.canRestore) { return; }
+
+  if (kind === 'set') {
+    document.getElementById('set-field').value = e.fieldName;
+    document.getElementById('set-value').value = e.oldValue;
+    setFieldResolve();
+    return;
+  }
+
+  if (kind === 'dbset') {
+    document.getElementById('dbset-field').value = e.fieldName;
+    document.getElementById('dbset-value').value = e.oldValue;
+    dbSetResolve();
+  }
+}
+
+// Reler: leitura nao altera nada, entao roda direto.
+function rereadFromHistory(id) {
+  var e = findHistoryEntry('read', id);
+  if (!e) { return; }
+  document.getElementById('read-field').value = e.typed;
+  readField();
+}
+
+// ---------------------------------------------------------------------------
 // UI — Ler campo
 // ---------------------------------------------------------------------------
 
@@ -298,6 +900,7 @@ function readField() {
           '<code>' + esc(result.base) + '</code> em ' + esc(result.framesScanned) +
           ' frame(s). Confira o nome do campo.</p>'
         );
+        recordRead(typed, []);
         return;
       }
 
@@ -325,6 +928,7 @@ function readField() {
       }
 
       render('read-output', html);
+      recordRead(typed, result.matches);
 
       if (rowTarget) {
         evalInPage(buildRowExpr(rowTarget.table, rowTarget.child))
@@ -446,14 +1050,17 @@ function showSetConfirmation(target, value) {
   );
 
   document.getElementById('btn-confirm-set').addEventListener('click', function () {
-    applySet(target.name);
+    // target inteiro (nao so o name): o historico precisa do valor ANTERIOR,
+    // que e justamente o target.value lido na resolucao.
+    applySet(target);
   });
   document.getElementById('btn-cancel-set').addEventListener('click', function () {
     render('set-output', '<span class="muted">Alteração cancelada.</span>');
   });
 }
 
-function applySet(rawName) {
+function applySet(target) {
+  var rawName = target.name;
   var value = document.getElementById('set-value').value;
   render('set-output', '<span class="muted">Aplicando…</span>');
 
@@ -464,6 +1071,8 @@ function applySet(rawName) {
           esc(rawName) + '</code> não encontrado ao aplicar).</span>');
         return;
       }
+      // So registra o que de fato mudou, com o read-back como valor novo.
+      recordSet(rawName, target.value, result.readBack, target);
       render('set-output',
         '<div class="row"><span class="k">Aplicado</span><span class="ok">' +
         esc(result.setCount) + ' elemento(s) em ' + esc(result.frame) + '</span></div>' +
@@ -841,16 +1450,32 @@ function dbSetResolve() {
     return;
   }
 
-  render('dbset-output', '<span class="muted">Resolvendo o documentId da solicitação…</span>');
+  render('dbset-output', '<span class="muted">Resolvendo o documentId e lendo o valor atual…</span>');
 
-  evalInPage(buildDocumentIdExpr())
-    .then(function (result) {
+  // O dsSetCardValue nao tem leitura correspondente, entao o valor anterior sai
+  // do DOM. No caso principal desta secao — solicitacao finalizada — o <span>
+  // carrega justamente o valor persistido, mas isso NAO e garantido (o DOM pode
+  // estar defasado). Por isso o rotulo na UI e sempre "anterior (DOM)".
+  // A leitura e best-effort: se falhar, segue sem valor anterior.
+  Promise.all([
+    evalInPage(buildDocumentIdExpr()),
+    evalInPage(buildFindExpr(fieldName)).catch(function () { return null; })
+  ])
+    .then(function (pair) {
+      var result = pair[0];
+      var found = pair[1];
       if (!result || !result.ok || !result.documentId) {
         render('dbset-output', '<span class="err">Não consegui resolver o documentId: ' +
           esc((result && result.message) || 'sem retorno') + '</span>');
         return;
       }
-      pendingDbSet = { documentId: result.documentId, numProcess: result.numProcess, fieldName: fieldName, value: value };
+      pendingDbSet = {
+        documentId: result.documentId,
+        numProcess: result.numProcess,
+        fieldName: fieldName,
+        value: value,
+        previousDom: pickDomValue(found && found.matches)
+      };
       showDbSetConfirmation(pendingDbSet);
     })
     .catch(function (exceptionInfo) {
@@ -865,6 +1490,10 @@ function showDbSetConfirmation(p) {
     '<div class="row"><span class="k">Solicitação</span><code>' + esc(p.numProcess) + '</code></div>' +
     '<div class="row"><span class="k">documentId</span><code>' + esc(p.documentId) + '</code></div>' +
     '<div class="row"><span class="k">campo</span><code>' + esc(p.fieldName) + '</code></div>' +
+    '<div class="row"><span class="k">anterior (DOM)</span>' +
+    (p.previousDom === null
+      ? '<span class="muted">não disponível</span>'
+      : '<code>' + renderValue(p.previousDom) + '</code>') + '</div>' +
     '<div class="row"><span class="k">novo</span><code>' + renderValue(p.value) + '</code></div>' +
     '<p class="muted">Grava via <code>dsSetCardValue</code> <strong>direto no banco</strong>, ' +
     'ignorando o DOM e as validações/lógicas do formulário. Ação sensível.</p>' +
@@ -900,6 +1529,7 @@ function applyDbSet() {
           esc((result && result.message) || 'sem retorno') + '</span>');
         return;
       }
+      recordDbSet(result.fieldName, result.documentId, p.previousDom, result.fieldValue);
       var html =
         '<div class="row"><span class="k">Gravado</span><span class="ok">no banco via dsSetCardValue</span></div>' +
         '<div class="row"><span class="k">documentId</span><code>' + esc(result.documentId) + '</code></div>' +
@@ -921,6 +1551,13 @@ function applyDbSet() {
 // Wiring
 // ---------------------------------------------------------------------------
 
+// Autocomplete ANTES dos handlers de Enter: listener na mesma tecla e no mesmo
+// elemento dispara na ordem de registro, e o dropdown precisa poder consumir o
+// Enter (escolher a sugestao) sem que o Ler/Setar rode junto.
+attachAutocomplete('read-field', 'read-field-ac');
+attachAutocomplete('set-field', 'set-field-ac');
+attachAutocomplete('dbset-field', 'dbset-field-ac');
+
 document.getElementById('btn-read').addEventListener('click', readField);
 document.getElementById('read-field').addEventListener('keydown', function (e) {
   if (e.key === 'Enter') { readField(); }
@@ -941,7 +1578,46 @@ document.getElementById('dbset-value').addEventListener('keydown', function (e) 
   if (e.key === 'Enter') { dbSetResolve(); }
 });
 
+document.getElementById('btn-read-history').addEventListener('click', function () { toggleHistory('read'); });
+document.getElementById('btn-set-history').addEventListener('click', function () { toggleHistory('set'); });
+document.getElementById('btn-dbset-history').addEventListener('click', function () { toggleHistory('dbset'); });
+
+// Delegacao: os botoes de dentro do historico sao recriados a cada render, entao
+// nao da para prender listener neles um a um.
+document.addEventListener('click', function (e) {
+  if (!e.target.closest) { return; }
+  var el = e.target.closest('[data-hist-restore], [data-hist-reread], [data-hist-clear]');
+  if (!el) { return; }
+
+  var restore = el.getAttribute('data-hist-restore');
+  if (restore) {
+    var parts = restore.split(':');
+    restoreFromHistory(parts[0], Number(parts[1]));
+    return;
+  }
+
+  var reread = el.getAttribute('data-hist-reread');
+  if (reread) {
+    rereadFromHistory(Number(reread));
+    return;
+  }
+
+  var clear = el.getAttribute('data-hist-clear');
+  if (clear) {
+    histories[clear] = [];
+    renderHistory(clear);
+  }
+});
+
+// Navegacao: a pagina nova tem outros campos — o indice do autocomplete morre.
+// O historico NAO e limpo: rever o que voce setou antes de recarregar a pagina e
+// justamente um dos usos.
+chrome.devtools.network.onNavigated.addListener(invalidateFieldIndex);
+
 document.getElementById('read-field').focus();
 
 // Resolve o documentId da solicitacao automaticamente ao abrir o painel.
 loadSolicitacao();
+
+// Aquece o indice para a primeira tecla ja vir com sugestao.
+ensureFieldIndex();

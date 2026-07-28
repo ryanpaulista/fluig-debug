@@ -102,6 +102,106 @@
         padding-top: 10px;
         min-height: 8px;
       }
+      /* Autocomplete de nome de campo -------------------------------------- */
+      /* O wrapper herda o flex que era do input (o input agora cresce dentro
+         dele) e serve de ancora para o dropdown absoluto. */
+      .ac-wrap {
+        position: relative;
+        display: flex;
+        flex: 1;
+        min-width: 120px;
+      }
+      .ac-wrap input[type="text"] {
+        min-width: 0;
+      }
+      .ac-box {
+        display: none;
+        position: absolute;
+        top: calc(100% + 2px);
+        left: 0;
+        right: 0;
+        z-index: 20;
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid rgba(127, 127, 127, 0.5);
+        border-radius: 4px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
+        /* Fundo opaco explicito (o dropdown cobre conteudo). Um por tema,
+           porque o painel segue o tema do DevTools via prefers-color-scheme. */
+        background: #ffffff;
+      }
+      @media (prefers-color-scheme: dark) {
+        .ac-box {
+          background: #282828;
+        }
+      }
+      .ac-item {
+        padding: 5px 8px;
+        cursor: pointer;
+        border-bottom: 1px solid rgba(127, 127, 127, 0.15);
+      }
+      .ac-item.active {
+        background: rgba(66, 133, 244, 0.22);
+      }
+      .ac-name {
+        display: flex;
+        gap: 6px;
+        align-items: baseline;
+        flex-wrap: wrap;
+      }
+      .ac-val {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11px;
+        opacity: 0.75;
+        margin-top: 2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .ac-empty,
+      .ac-foot {
+        padding: 5px 8px;
+        font-size: 11px;
+      }
+      .ac-foot {
+        position: sticky;
+        bottom: 0;
+        background: inherit;
+        border-top: 1px solid rgba(127, 127, 127, 0.25);
+      }
+
+      /* Historico por secao ------------------------------------------------- */
+      .hist {
+        display: none;
+        margin-top: 10px;
+        border: 1px solid rgba(127, 127, 127, 0.35);
+        border-radius: 6px;
+        padding: 8px 10px;
+      }
+      .hist-head {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        justify-content: space-between;
+        margin-bottom: 4px;
+      }
+      .hist-item {
+        border-top: 1px solid rgba(127, 127, 127, 0.2);
+        padding: 6px 0 4px 0;
+      }
+      .hist-item:first-of-type {
+        border-top: none;
+      }
+      .hist-time {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11px;
+        opacity: 0.65;
+      }
+      .hist button {
+        padding: 2px 8px;
+        font-size: 11px;
+      }
+
       textarea {
         width: 100%;
         box-sizing: border-box;
@@ -134,13 +234,20 @@
       <h2>Ler campo</h2>
       <p class="muted">
         Lê o valor pelo nome. Trata campo desabilitado (<code>_</code>) e linhas
-        de tabela pai-filho (<code>___N</code>).
+        de tabela pai-filho (<code>___N</code>). Comece a digitar (ou tecle
+        <code>↓</code>) para ver os campos da página; digite <code>___</code>
+        para escolher a linha da tabela.
       </p>
       <div class="field-row">
-        <input id="read-field" type="text" placeholder="nome do campo (ex: empresa)" />
+        <div class="ac-wrap">
+          <input id="read-field" type="text" placeholder="nome do campo (ex: empresa)" autocomplete="off" />
+          <div id="read-field-ac" class="ac-box"></div>
+        </div>
         <button id="btn-read" type="button">Ler</button>
+        <button id="btn-read-history" type="button">Histórico</button>
       </div>
       <div id="read-output" class="out"></div>
+      <div id="read-history" class="hist"></div>
     </section>
 
     <section>
@@ -150,11 +257,16 @@
         confirmação (campo + valor atual → novo) antes de aplicar.
       </p>
       <div class="field-row">
-        <input id="set-field" type="text" placeholder="nome do campo" />
+        <div class="ac-wrap">
+          <input id="set-field" type="text" placeholder="nome do campo" autocomplete="off" />
+          <div id="set-field-ac" class="ac-box"></div>
+        </div>
         <input id="set-value" type="text" placeholder="novo valor" />
         <button id="btn-set" type="button">Setar</button>
+        <button id="btn-set-history" type="button">Histórico</button>
       </div>
       <div id="set-output" class="out"></div>
+      <div id="set-history" class="hist"></div>
     </section>
 
     <section>
@@ -167,11 +279,16 @@
         Mostra confirmação antes de aplicar.
       </p>
       <div class="field-row">
-        <input id="dbset-field" type="text" placeholder="nome do campo" />
+        <div class="ac-wrap">
+          <input id="dbset-field" type="text" placeholder="nome do campo" autocomplete="off" />
+          <div id="dbset-field-ac" class="ac-box"></div>
+        </div>
         <input id="dbset-value" type="text" placeholder="novo valor" />
         <button id="btn-dbset" type="button">Setar no banco</button>
+        <button id="btn-dbset-history" type="button">Histórico</button>
       </div>
       <div id="dbset-output" class="out"></div>
+      <div id="dbset-history" class="hist"></div>
     </section>
 
     <section>

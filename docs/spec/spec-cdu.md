@@ -164,6 +164,61 @@ inputs efetivamente presentes no DOM pelo `name`/`id` reais daquele momento,
 lidando com o prefixo `_` e o sufixo `___N`. Isso é justamente o que a extensão
 agrega sobre o console manual: tira a adivinhação de qual é o seletor certo.
 
+### Autocomplete de nome de campo (implementado)
+
+Consequência direta do item acima: se o `name` real é instável, o desenvolvedor
+também **não sabe de cabeça o nome do campo**. Os três inputs de nome (ler,
+setar, setar no banco) sugerem os campos presentes na página conforme se digita.
+
+**Decidido:**
+
+- **Fonte:** a mesma varredura do dump (`input, select, textarea, span[name]` em
+  todos os frames de mesma origem), agrupada por **nome lógico**. Não há lista
+  fixa de campos nem consulta ao servidor — só o DOM daquele momento.
+- **Granularidade:** por padrão a lista mostra **nomes lógicos** (com badge de
+  quantas linhas/ocorrências existem), porque é o que o usuário digita. As
+  ocorrências `___N` aparecem **sob demanda**, quando o texto contém `___`.
+  Isso é o atalho para o caso em que o setar bloqueia por ambiguidade e exige a
+  ocorrência exata.
+- **Dropdown próprio** (não `<datalist>`): permite mostrar os mesmos badges do
+  resultado do ler (desabilitado, somente leitura, tipo, tabela) e um preview do
+  valor atual, além de controlar o ranking (prefixo antes de substring).
+- **Enter escolhe, não executa.** Preserva o fluxo antigo de digitar o nome
+  completo e teclar Enter para rodar a ação.
+- **Cache com TTL curto (3s)** + invalidação na navegação, porque o formulário
+  muda em runtime (linha nova na tabela filha, campo habilitado/desabilitado).
+- **Degrada em silêncio:** se a varredura falhar, o input segue aceitando o nome
+  digitado à mão. A sugestão é conveniência, não pré-requisito.
+
+### Histórico por seção (implementado)
+
+Complemento do CU-01: ao investigar um bug você seta um valor para testar, e
+muitas vezes precisa **voltar o valor anterior** — hoje isso dependia de você ter
+anotado qual era.
+
+**Decidido:**
+
+- **Um histórico por seção de interação** (ler / setar / setar no banco), atrás de
+  um botão **Histórico (N)** na própria seção. Não há uma aba/seção global de
+  histórico.
+- **Efêmero, só em memória do painel:** sobrevive à navegação da página (rever o
+  que foi setado antes de recarregar o formulário é justamente um dos usos) e
+  morre ao fechar o DevTools. **Nada em `storage`** — mesmo princípio do dump.
+- **Restaurar preenche e abre a confirmação**, em vez de aplicar direto. A regra
+  de que toda ação que altera estado passa por confirmação continua valendo; o
+  histórico só encurta o caminho até ela.
+- **Registra o efeito, não a intenção:** o valor novo gravado é o *read-back*.
+  Alteração cancelada ou que falhou não entra. Leitura não encontrada entra.
+- **Leitura repetida idêntica colapsa** em contador (`N×`); escrita nunca.
+- **Limite de 50 entradas** por seção.
+
+**Limitação assumida — o "anterior" do setar no banco:** o `dsSetCardValue` não
+tem leitura correspondente, então o valor anterior dessa seção é lido do **DOM** e
+rotulado como `anterior (DOM)` em toda a UI. No caso principal (solicitação
+finalizada) o `<span>` contém o valor persistido, mas não há garantia. Quando não
+é possível afirmar um único valor (campo ausente, ou ocorrências espelhadas
+divergentes), a UI mostra **não disponível** e não oferece Restaurar.
+
 ### Restrição de arquitetura (Manifest V3)
 
 O painel do DevTools **não** acessa diretamente o JavaScript da página
