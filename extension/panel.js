@@ -665,8 +665,10 @@ function copyDump() {
 // ---------------------------------------------------------------------------
 //
 // Fluxo (roda automatico ao abrir o painel, sem clique):
-//   1. Le o numero da solicitacao na URL, no parametro do workflowview
-//      (app_ecm_workflowview_detailsProcessInstanceID). Ex: ...?..._detailsProcessInstanceID=717
+//   1. Le o numero da solicitacao na URL, em qualquer parametro do workflowview
+//      terminado em processInstanceId (o nome muda conforme a origem da
+//      abertura: _detailsProcessInstanceID na consulta, _processInstanceId na
+//      tarefa). Ver numProcessFromUrl.
 //   2. Consulta o dataset workflowProcess (via DatasetFactory CLIENT-SIDE, que
 //      existe no contexto do formulario Fluig) filtrando por
 //      workflowProcessPK.processInstanceId e pedindo cardDocumentId.
@@ -685,20 +687,42 @@ var DATASET_HELPERS = [
   '    }',
   '    return null;',
   '  }',
-  '  // Numero da solicitacao a partir da URL (param do workflowview).',
+  '  // Numero da solicitacao a partir da URL (param do workflowview). O nome do',
+  '  // parametro MUDA conforme por onde a solicitacao foi aberta:',
+  '  //   ...?app_ecm_workflowview_detailsProcessInstanceID=717  (consulta/detalhes)',
+  '  //   ...?app_ecm_workflowview_processInstanceId=698707      (tarefa/movimentacao)',
+  '  // Por isso nao fixamos um nome: varremos os parametros da query e aceitamos',
+  '  // qualquer chave que termine em "processinstanceid" (case-insensitive) com',
+  '  // valor numerico. O sufixo e especifico o bastante para nao pegar os vizinhos',
+  '  // (currentMovto, taskUserId, managerMode).',
+  '  function numProcessFromUrl(href) {',
+  '    var qs = String(href).split("#")[0].split("?").slice(1).join("?");',
+  '    if (!qs) { return null; }',
+  '    var parts = qs.split("&");',
+  '    for (var i = 0; i < parts.length; i++) {',
+  '      var eq = parts[i].indexOf("=");',
+  '      if (eq < 0) { continue; }',
+  '      var key, val;',
+  '      try { key = decodeURIComponent(parts[i].slice(0, eq)); val = decodeURIComponent(parts[i].slice(eq + 1)); } catch (e) { continue; }',
+  '      if (!/processinstanceid$/i.test(key)) { continue; }',
+  '      if (!/^\\d+$/.test(val)) { continue; }',
+  '      return val;',
+  '    }',
+  '    return null;',
+  '  }',
   '  function findNumProcess(wins) {',
   '    for (var i = 0; i < wins.length; i++) {',
   '      var href;',
   '      try { href = String(wins[i].location.href); } catch (e) { continue; }',
-  '      var m = href.match(/[?&]app_ecm_workflowview_detailsProcessInstanceID=(\\d+)/i);',
-  '      if (m) { return m[1]; }',
+  '      var n = numProcessFromUrl(href);',
+  '      if (n) { return n; }',
   '    }',
   '    return null;',
   '  }',
   '  // documentId da solicitacao: workflowProcess -> cardDocumentId.',
   '  function resolveDocId(wins) {',
   '    var numProcess = findNumProcess(wins);',
-  '    if (!numProcess) { return { ok: false, stage: "url", message: "Número da solicitação não encontrado na URL (parâmetro app_ecm_workflowview_detailsProcessInstanceID). Abra a extensão sobre uma solicitação de workflow." }; }',
+  '    if (!numProcess) { return { ok: false, stage: "url", message: "Número da solicitação não encontrado na URL (nenhum parâmetro *processInstanceId). Abra a extensão sobre uma solicitação de workflow." }; }',
   '    var dsWin = findDatasetWin(wins);',
   '    if (!dsWin) { return { ok: false, stage: "dataset", numProcess: numProcess, message: "DatasetFactory não disponível no client-side (formulário ainda carregando?). Tente Recarregar." }; }',
   '    try {',

@@ -78,8 +78,12 @@ dataset) que hoje só são acessíveis digitando comandos no console.
 
 **Decidido (1ª fatia — implementada):** o foco é o **documentId da
 solicitação**, resolvido automaticamente ao abrir o painel:
-- O **número da solicitação** vem do parâmetro de URL
-  `app_ecm_workflowview_detailsProcessInstanceID` (na `pageworkflowview`).
+- O **número da solicitação** vem do parâmetro de URL da `pageworkflowview`. O
+  nome do parâmetro **varia conforme por onde a solicitação foi aberta**
+  (`app_ecm_workflowview_detailsProcessInstanceID` pela consulta/detalhes,
+  `app_ecm_workflowview_processInstanceId` pela tarefa/movimentação), então a
+  extensão não fixa um nome: aceita **qualquer parâmetro terminado em
+  `processInstanceId`** (case-insensitive) com valor numérico.
 - O **documentId** é resolvido consultando o dataset `workflowProcess` (via
   `DatasetFactory` **client-side** do Fluig, disponível no contexto do
   formulário), filtrando por `workflowProcessPK.processInstanceId` e lendo o

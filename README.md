@@ -180,8 +180,8 @@ dump lê esse buffer e inclui em `logs`.
 ## Como testar a Etapa 6 (documentId da solicitação — CU-03)
 
 1. Recarregue a extensão e reabra o DevTools.
-2. Abra uma **solicitação de workflow** real (uma URL de `pageworkflowview` com o
-   parâmetro `app_ecm_workflowview_detailsProcessInstanceID=<n>`).
+2. Abra uma **solicitação de workflow** real (uma URL de `pageworkflowview` que
+   traga o número da solicitação num parâmetro `...processInstanceId=<n>`).
 3. Vá na aba **Fluig Debug**. A seção **Solicitação** fica no topo e resolve
    sozinha, **sem clique**:
    - **Solicitação:** o número lido da URL.
@@ -191,8 +191,15 @@ dump lê esse buffer e inclui em `logs`.
 
 Como funciona (não garimpa o DOM):
 
-- O número da solicitação vem do parâmetro de URL
-  `app_ecm_workflowview_detailsProcessInstanceID`.
+- O número da solicitação vem de um parâmetro de URL. O Fluig **muda o nome
+  desse parâmetro** conforme por onde a solicitação foi aberta — pela
+  consulta/detalhes vem `app_ecm_workflowview_detailsProcessInstanceID=717`,
+  pela tarefa/movimentação vem `app_ecm_workflowview_processInstanceId=698707`.
+  Por isso a extensão não procura um nome fixo: ela varre a query e aceita
+  **qualquer parâmetro cujo nome termine em `processInstanceId`** (ignorando
+  maiúsculas/minúsculas) com valor numérico. O sufixo é específico o bastante
+  para não confundir com os vizinhos (`currentMovto`, `taskUserId`,
+  `managerMode`).
 - Com esse número, a extensão executa **no contexto da página** uma consulta ao
   dataset `workflowProcess` (via `DatasetFactory` client-side do Fluig),
   filtrando por `workflowProcessPK.processInstanceId` e pedindo o campo
@@ -227,6 +234,6 @@ Cuidados:
 - **Confirmação obrigatória**, como no setar do DOM — ainda mais importante aqui,
   porque grava no banco **ignorando** as validações/lógicas do formulário.
 - Depende do `documentId` resolver (mesma base da seção **Solicitação**): só
-  funciona sobre uma `pageworkflowview` com o parâmetro
-  `app_ecm_workflowview_detailsProcessInstanceID` e com `DatasetFactory`
-  client-side disponível.
+  funciona sobre uma `pageworkflowview` que traga o número da solicitação num
+  parâmetro `...processInstanceId` e com `DatasetFactory` client-side
+  disponível.
