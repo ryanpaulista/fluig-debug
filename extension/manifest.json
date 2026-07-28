@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Fluig Debug",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Painel no DevTools para inspecionar e manipular formularios Fluig (ler/setar campos, dump de estado). Ferramenta interna de debug.",
   "minimum_chrome_version": "88",
   "devtools_page": "devtools.html",
