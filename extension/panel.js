@@ -1230,6 +1230,8 @@ function dumpFields() {
   var status = document.getElementById('dump-status');
   status.textContent = 'Coletando…';
   document.getElementById('dump-json').value = '';
+  dumpRows = [];
+  renderDumpTable();
 
   evalInPage(buildDumpExpr())
     .then(function (result) {
@@ -1238,7 +1240,9 @@ function dumpFields() {
         return;
       }
       var out = structureDump(result);
+      dumpRows = buildDumpRows(result);
       document.getElementById('dump-json').value = JSON.stringify(out, null, 2);
+      renderDumpTable();
       status.innerHTML = '<span class="ok">' + out.meta.fieldCount + ' campo(s), ' +
         out.meta.tableCount + ' tabela(s), ' + out.meta.logCount + ' log(s).</span>';
     })
@@ -1254,10 +1258,16 @@ function copyDump() {
     status.innerHTML = '<span class="muted">Gere o dump antes de copiar.</span>';
     return;
   }
-  ta.focus();
-  ta.select();
+  // Na aba Tabela a textarea esta com display:none e nao da para selecionar.
+  // Na aba JSON seleciona a propria textarea, que ja serve de retorno visual.
   var ok = false;
-  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  if (dumpView === 'json') {
+    ta.focus();
+    ta.select();
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  } else {
+    ok = copyText(ta.value);
+  }
   if (ok) {
     status.innerHTML = '<span class="ok">Copiado para a área de transferência.</span>';
   } else if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -1267,6 +1277,161 @@ function copyDump() {
   } else {
     status.innerHTML = '<span class="muted">Selecione o texto e use Ctrl+C.</span>';
   }
+}
+
+// ---------------------------------------------------------------------------
+// Dump — visao em tabela (CU-02)
+// ---------------------------------------------------------------------------
+//
+// A tabela e outra FORMA DE MOSTRAR o mesmo resultado do buildDumpExpr, nunca
+// uma segunda varredura: dois caminhos coletando o mesmo dado divergem na
+// primeira mudanca de regra (o que conta como campo, como le valor, etc).
+//
+// Uma linha por entrada CRUA, nao por campo logico: o mesmo campo repetido em
+// frames diferentes e cada linha de tabela pai-filho aparecem separados — que e
+// justamente o que se quer enxergar depurando. O agrupamento continua no JSON.
+
+var dumpRows = [];
+var dumpView = 'table';
+// Formulario Fluig grande passa facil de mil entradas, e montar tudo de uma vez
+// trava o painel. Renderiza ate um teto e manda refinar o filtro — mesma
+// preocupacao do MAX_SUGGESTIONS do autocomplete.
+var DUMP_RENDER_MAX = 300;
+
+function buildDumpRows(result) {
+  var rows = (result.entries || []).slice();
+  rows.sort(function (a, b) {
+    // Por nome logico: agrupa as linhas de um mesmo campo pai-filho, que e como
+    // se le uma tabela. Dentro do mesmo nome, ordem numerica da linha (___N).
+    var byName = String(a.name).localeCompare(String(b.name), 'pt-BR');
+    if (byName !== 0) { return byName; }
+    return Number(a.child || 0) - Number(b.child || 0);
+  });
+  // Indice fixado DEPOIS da ordenacao: os botoes referenciam a linha por indice,
+  // e filtrar nao pode remapear esse numero.
+  rows.forEach(function (r, i) { r.idx = i; });
+  return rows;
+}
+
+function filterDumpRows(term) {
+  var q = String(term || '').trim().toLowerCase();
+  if (!q) { return dumpRows; }
+  // Casa nome cru, nome logico e valor: procurar pelo valor que se ve na tela
+  // para descobrir de que campo ele veio e um dos usos principais.
+  return dumpRows.filter(function (r) {
+    return String(r.raw).toLowerCase().indexOf(q) >= 0 ||
+      String(r.name).toLowerCase().indexOf(q) >= 0 ||
+      String(r.value).toLowerCase().indexOf(q) >= 0;
+  });
+}
+
+// Mesmo vocabulario de tags do matchTags/suggestionTags, mais frame e tabela.
+function dumpRowTags(r) {
+  var tags = [];
+  if (r.disabled) { tags.push('<span class="tag warn">desabilitado (_)</span>'); }
+  if (r.child != null) { tags.push('<span class="tag">linha ' + esc(r.child) + '</span>'); }
+  if (r.table) { tags.push('<span class="tag">' + esc(r.table) + '</span>'); }
+  if (r.frame !== 'top') { tags.push('<span class="tag">iframe</span>'); }
+  if (r.type === 'span') { tags.push('<span class="tag">somente leitura</span>'); }
+  else if (r.type) { tags.push('<span class="tag">' + esc(r.type) + '</span>'); }
+  return tags.join(' ');
+}
+
+// So o indice numerico vai para atributo HTML: esc() nao escapa aspas, e nome de
+// campo vem da pagina. Quem precisa do nome busca em dumpRows[idx].
+function dumpRowHtml(r) {
+  return '<div class="dump-row">' +
+    '<div class="dump-name"><code>' + esc(r.raw) + '</code>' +
+    '<div class="dump-tags">' + dumpRowTags(r) + '</div></div>' +
+    '<div class="dump-val">' + renderValue(r.value) + '</div>' +
+    '<div class="dump-acts">' +
+    '<button type="button" data-dump-set="' + r.idx + '">Setar</button>' +
+    '<button type="button" data-dump-copy="' + r.idx + '">Copiar nome</button>' +
+    '</div>' +
+    '</div>';
+}
+
+function renderDumpTable() {
+  var box = document.getElementById('dump-table');
+  if (!dumpRows.length) {
+    box.innerHTML = '<span class="muted">Clique em “Gerar dump” para listar todos os campos da página.</span>';
+    return;
+  }
+
+  var filtered = filterDumpRows(document.getElementById('dump-filter').value);
+  if (!filtered.length) {
+    box.innerHTML = '<span class="muted">Nenhum campo casa com o filtro.</span>';
+    return;
+  }
+
+  var shown = filtered.slice(0, DUMP_RENDER_MAX);
+  var foot = shown.length < filtered.length
+    ? 'Mostrando ' + shown.length + ' de ' + filtered.length + ' campo(s) — refine o filtro para ver o resto.'
+    : filtered.length + ' campo(s).';
+
+  box.innerHTML = shown.map(dumpRowHtml).join('') +
+    '<div class="dump-foot muted">' + foot + '</div>';
+}
+
+function setDumpView(view) {
+  dumpView = view === 'json' ? 'json' : 'table';
+  var isTable = dumpView === 'table';
+  document.getElementById('dump-table-view').style.display = isTable ? '' : 'none';
+  document.getElementById('dump-json').style.display = isTable ? 'none' : '';
+  document.getElementById('btn-dump-table').classList.toggle('active', isTable);
+  document.getElementById('btn-dump-json').classList.toggle('active', !isTable);
+  if (isTable) { renderDumpTable(); }
+}
+
+// Leva o nome CRU (com o "_" de desabilitado e o "___N" da linha) para a secao
+// Setar campo: e a forma que o buildFindExpr resolve sem ambiguidade. NAO
+// dispara a resolucao — falta o usuario digitar o valor novo, e a alteracao
+// segue passando pela confirmacao obrigatoria.
+function setFromDump(idx) {
+  var r = dumpRows[idx];
+  if (!r) { return; }
+  var field = document.getElementById('set-field');
+  var value = document.getElementById('set-value');
+  field.value = r.raw;
+  value.value = '';
+  render('set-output', '<span class="muted">Campo <code>' + esc(r.raw) +
+    '</code> carregado do dump (valor atual: <code>' + renderValue(r.value) +
+    '</code>). Digite o novo valor e clique em Setar.</span>');
+  field.scrollIntoView({ block: 'center' });
+  value.focus();
+}
+
+// Copia um texto curto. O copyDump seleciona a propria textarea (o realce faz
+// parte do retorno visual); aqui nao ha elemento visivel, entao usa um efemero.
+function copyText(text) {
+  var ta = document.createElement('textarea');
+  ta.value = text;
+  ta.setAttribute('readonly', '');
+  ta.style.position = 'fixed';
+  ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  var ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  document.body.removeChild(ta);
+  return ok;
+}
+
+function copyFieldName(idx) {
+  var r = dumpRows[idx];
+  if (!r) { return; }
+  var status = document.getElementById('dump-status');
+  if (copyText(r.raw)) {
+    status.innerHTML = '<span class="ok">Nome copiado: <code>' + esc(r.raw) + '</code></span>';
+    return;
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(r.raw)
+      .then(function () { status.innerHTML = '<span class="ok">Nome copiado: <code>' + esc(r.raw) + '</code></span>'; })
+      .catch(function () { status.innerHTML = '<span class="muted">Não consegui copiar o nome.</span>'; });
+    return;
+  }
+  status.innerHTML = '<span class="muted">Não consegui copiar o nome.</span>';
 }
 
 // ---------------------------------------------------------------------------
@@ -1570,6 +1735,23 @@ document.getElementById('set-value').addEventListener('keydown', function (e) {
 
 document.getElementById('btn-dump').addEventListener('click', dumpFields);
 document.getElementById('btn-copy-dump').addEventListener('click', copyDump);
+document.getElementById('btn-dump-table').addEventListener('click', function () { setDumpView('table'); });
+document.getElementById('btn-dump-json').addEventListener('click', function () { setDumpView('json'); });
+document.getElementById('dump-filter').addEventListener('input', renderDumpTable);
+
+// Delegacao escopada no container: as linhas sao recriadas a cada render/filtro,
+// mas o #dump-table em si e estavel.
+document.getElementById('dump-table').addEventListener('click', function (e) {
+  if (!e.target.closest) { return; }
+  var el = e.target.closest('[data-dump-set], [data-dump-copy]');
+  if (!el) { return; }
+
+  var toSet = el.getAttribute('data-dump-set');
+  if (toSet !== null) { setFromDump(Number(toSet)); return; }
+
+  var toCopy = el.getAttribute('data-dump-copy');
+  if (toCopy !== null) { copyFieldName(Number(toCopy)); }
+});
 
 document.getElementById('btn-reload-solicitacao').addEventListener('click', loadSolicitacao);
 
@@ -1613,6 +1795,10 @@ document.addEventListener('click', function (e) {
 // O historico NAO e limpo: rever o que voce setou antes de recarregar a pagina e
 // justamente um dos usos.
 chrome.devtools.network.onNavigated.addListener(invalidateFieldIndex);
+
+// Estado inicial do dump: tabela (com o vazio explicando o "Gerar dump") e a
+// textarea de JSON escondida.
+setDumpView('table');
 
 document.getElementById('read-field').focus();
 

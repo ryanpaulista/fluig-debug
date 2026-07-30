@@ -139,20 +139,35 @@ Cuidados embutidos:
 
 1. Recarregue a extensão e reabra o DevTools.
 2. Na seção **Dump do estado**, clique em **Gerar dump**.
-3. **Esperado:** o `<textarea>` mostra um JSON com:
+3. **Esperado (aba Tabela, padrão):** a lista de todos os campos da página, um
+   por linha, com o nome cru, as tags (desabilitado, linha da tabela, iframe,
+   tipo) e o valor atual. Digite no filtro para reduzir por **nome ou valor**.
+   Cada linha tem **Setar** (leva o nome para a seção Setar campo, já com o
+   sufixo `_` / `___N` correto) e **Copiar nome**.
+4. Clique em **JSON** para a mesma coleta no formato agrupado.
+5. **Esperado (aba JSON):** o `<textarea>` mostra um JSON com:
    - `meta` — origem da captura, nº de campos/tabelas/logs e lista de campos
      desabilitados;
    - `fields` — campos simples (nome lógico → valor);
    - `tables` — tabelas pai-filho agrupadas em linhas (quando houver);
    - `logs` — mensagens de `console.log`/`warn`/`error` e erros não tratados
      capturados (quando houver — ver abaixo).
-4. Clique em **Copiar** para levar o JSON para a área de transferência (ou use
-   Ctrl+C direto no textarea). Cole numa ferramenta de IA como contexto do bug.
+6. Clique em **Copiar JSON** para levar o JSON para a área de transferência (ou
+   use Ctrl+C direto no textarea). Cole numa ferramenta de IA como contexto do
+   bug.
 
 Notas:
 
 - O dump é gerado **sob demanda** e fica só na tela — **nada é persistido** em
   storage.
+- As duas abas mostram **a mesma coleta**: clicar em Tabela ou JSON não
+  revarre a página. Para atualizar depois de mexer no formulário, é Gerar dump
+  de novo.
+- A tabela lista uma linha por ocorrência **crua** (campo espelhado em outro
+  frame e cada linha `___N` aparecem separados); o agrupamento por nome lógico
+  continua na aba JSON.
+- Formulário grande: a tabela renderiza no máximo **300 linhas** por vez e
+  avisa no rodapé quantas ficaram de fora — use o filtro.
 - Campos duplicados (inputs espelhados do Fluig) com valores diferentes viram
   um array, para sinalizar a ambiguidade em vez de escondê-la.
 - **Modo VIEW / processo finalizado:** nesses contextos o Fluig troca os inputs

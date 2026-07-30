@@ -202,6 +202,63 @@
         font-size: 11px;
       }
 
+      /* Dump — visao em tabela ---------------------------------------------- */
+      button.active {
+        border-color: rgba(66, 133, 244, 0.9);
+        background: rgba(66, 133, 244, 0.18);
+        font-weight: 600;
+      }
+      .dump-row {
+        display: flex;
+        gap: 10px;
+        align-items: baseline;
+        border-top: 1px solid rgba(127, 127, 127, 0.2);
+        padding: 5px 0;
+      }
+      .dump-row:first-child {
+        border-top: none;
+      }
+      .dump-name {
+        flex: 0 0 32%;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .dump-tags {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+        margin-top: 2px;
+      }
+      .dump-val {
+        flex: 1 1 auto;
+        min-width: 0;
+        /* Valor longo (JSON num hidden, texto de parecer) nao pode esticar a
+           linha indefinidamente. Corta em 3 linhas COM reticencias, para o corte
+           ficar visivel — o valor inteiro continua na aba JSON. */
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        overflow: hidden;
+        overflow-wrap: anywhere;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+      }
+      .dump-acts {
+        flex: 0 0 auto;
+        display: flex;
+        gap: 4px;
+      }
+      .dump-acts button {
+        padding: 2px 8px;
+        font-size: 11px;
+      }
+      .dump-foot {
+        border-top: 1px solid rgba(127, 127, 127, 0.25);
+        margin-top: 6px;
+        padding-top: 6px;
+        font-size: 11px;
+      }
+
       textarea {
         width: 100%;
         box-sizing: border-box;
@@ -294,14 +351,25 @@
     <section>
       <h2>Dump do estado</h2>
       <p class="muted">
-        Coleta todos os campos e valores em JSON (agrupa tabelas pai-filho por
-        <code>___N</code>) e inclui os <code>console.log</code>/erros capturados
-        desde que o DevTools foi aberto. Pronto para colar como contexto em uma IA.
+        Coleta de uma vez todos os campos e valores da página. Em
+        <strong>Tabela</strong>, campo a campo, com filtro e atalho para setar;
+        em <strong>JSON</strong>, o mesmo dump agrupado (tabelas pai-filho por
+        <code>___N</code>) mais os <code>console.log</code>/erros capturados
+        desde que o DevTools foi aberto — pronto para colar como contexto em
+        uma IA.
       </p>
       <div class="field-row">
         <button id="btn-dump" type="button">Gerar dump</button>
-        <button id="btn-copy-dump" type="button">Copiar</button>
+        <button id="btn-dump-table" type="button">Tabela</button>
+        <button id="btn-dump-json" type="button">JSON</button>
+        <button id="btn-copy-dump" type="button">Copiar JSON</button>
         <span id="dump-status" class="muted"></span>
+      </div>
+      <div id="dump-table-view">
+        <div class="field-row">
+          <input id="dump-filter" type="text" placeholder="filtrar por nome ou valor" autocomplete="off" />
+        </div>
+        <div id="dump-table" class="out"></div>
       </div>
       <textarea id="dump-json" readonly placeholder="O JSON aparece aqui após 'Gerar dump'."></textarea>
     </section>

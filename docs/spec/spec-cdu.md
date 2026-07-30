@@ -66,6 +66,27 @@ ferramenta de IA (ex: Claude Code) e pedir análise do problema.
 **Valor:** transforma "coletar o estado campo a campo" em uma ação única, e
 entrega o contexto num formato que a IA entende bem.
 
+**Ampliação (implementada):** além de exportar, *olhar*. O mesmo dump tem duas
+apresentações, alternadas por botão:
+- **Tabela** (padrão) — uma linha por ocorrência crua, com nome, tags
+  (desabilitado / linha / tabela / iframe / tipo) e valor; filtro incremental
+  por **nome ou valor**; por linha, "Setar" (leva o nome cru para o CU-01 de
+  escrita, sem disparar a confirmação) e "Copiar nome".
+- **JSON** — a saída agrupada de sempre, para colar como contexto.
+
+**Decisões:**
+- A tabela é uma *view* do resultado do `buildDumpExpr`, **não** uma segunda
+  varredura: alternar aba não revarre a página. Dois caminhos coletando o mesmo
+  dado divergiriam na primeira mudança de regra.
+- Linha por entrada **crua**, não por campo lógico: campo espelhado em outro
+  frame e cada `___N` precisam aparecer separados para serem depuráveis. O
+  agrupamento continua sendo o papel do JSON.
+- Teto de **300 linhas** renderizadas por vez, com aviso no rodapé — mesma
+  preocupação do `MAX_SUGGESTIONS` do autocomplete: formulário Fluig grande
+  passa de mil entradas e travaria o painel.
+- Só o índice numérico da linha vai para atributo HTML (`data-dump-*`): o `esc()`
+  do painel não escapa aspas, e nome de campo vem da página.
+
 ### CU-03 — Inspecionar variáveis / dataset do Fluig
 
 **Contexto:** além dos campos do formulário, o desenvolvedor precisa ver
