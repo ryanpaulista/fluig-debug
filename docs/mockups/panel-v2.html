@@ -1,0 +1,1528 @@
+<title>Fluig Debug — proposta de UI v2</title>
+
+<style>
+  /* ==========================================================================
+     Tokens da PÁGINA (o texto ao redor do mockup). Segue o tema do leitor.
+     ========================================================================== */
+  :root {
+    --pg-bg: #f6f7f9;
+    --pg-panel: #ffffff;
+    --pg-line: #dfe3e8;
+    --pg-text: #1e2227;
+    --pg-dim: #5d666f;
+    --pg-faint: #8b939c;
+    --pg-accent: #2f6da3;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "JetBrains Mono", "SF Mono", SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --pg-bg: #101216;
+      --pg-panel: #171a1f;
+      --pg-line: #262b32;
+      --pg-text: #d3d9e0;
+      --pg-dim: #8b949e;
+      --pg-faint: #626b76;
+      --pg-accent: #6aa9e0;
+    }
+  }
+  :root[data-theme="dark"] {
+    --pg-bg: #101216;
+    --pg-panel: #171a1f;
+    --pg-line: #262b32;
+    --pg-text: #d3d9e0;
+    --pg-dim: #8b949e;
+    --pg-faint: #626b76;
+    --pg-accent: #6aa9e0;
+  }
+  :root[data-theme="light"] {
+    --pg-bg: #f6f7f9;
+    --pg-panel: #ffffff;
+    --pg-line: #dfe3e8;
+    --pg-text: #1e2227;
+    --pg-dim: #5d666f;
+    --pg-faint: #8b939c;
+    --pg-accent: #2f6da3;
+  }
+
+  body {
+    background: var(--pg-bg);
+    color: var(--pg-text);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 40px 20px 72px;
+    display: flex;
+    flex-direction: column;
+    gap: 34px;
+  }
+
+  /* --- cabeçalho da página ------------------------------------------------ */
+  .pg-head { display: flex; flex-direction: column; gap: 10px; }
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--pg-faint);
+  }
+  .pg-head h1 {
+    font-size: 25px;
+    font-weight: 600;
+    letter-spacing: -0.015em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .lede {
+    max-width: 64ch;
+    color: var(--pg-dim);
+    margin: 0;
+  }
+  .lede strong { color: var(--pg-text); font-weight: 600; }
+
+  /* --- seções de texto --------------------------------------------------- */
+  .sec { display: flex; flex-direction: column; gap: 14px; }
+  .sec-title {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--pg-line);
+  }
+  .sec-title h2 {
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin: 0;
+  }
+  .sec-title span {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--pg-faint);
+  }
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1px;
+    background: var(--pg-line);
+    border: 1px solid var(--pg-line);
+  }
+  .card {
+    background: var(--pg-panel);
+    padding: 15px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .card b {
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .card p {
+    margin: 0;
+    font-size: 12.5px;
+    color: var(--pg-dim);
+    line-height: 1.55;
+  }
+  .card code, .inline-code {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--pg-text);
+    background: color-mix(in srgb, var(--pg-text) 8%, transparent);
+    padding: 0 3px;
+  }
+  .killed { display: flex; flex-direction: column; gap: 7px; margin: 0; padding: 0; list-style: none; }
+  .killed li {
+    display: grid;
+    grid-template-columns: 15px 1fr;
+    gap: 9px;
+    font-size: 12.5px;
+    color: var(--pg-dim);
+    align-items: start;
+  }
+  .killed li i {
+    font-family: var(--mono);
+    font-style: normal;
+    color: #d1685f;
+    line-height: 1.55;
+  }
+  .killed li b { color: var(--pg-text); font-weight: 600; }
+
+  /* swatches */
+  .swatches { display: flex; flex-wrap: wrap; gap: 1px; background: var(--pg-line); border: 1px solid var(--pg-line); }
+  .sw { background: var(--pg-panel); padding: 10px 12px; display: flex; align-items: center; gap: 9px; flex: 1 1 150px; }
+  .sw i { width: 20px; height: 20px; border: 1px solid rgba(127,127,127,.35); display: block; flex: none; }
+  .sw div { display: flex; flex-direction: column; line-height: 1.35; min-width: 0; }
+  .sw b { font-size: 11.5px; font-weight: 600; }
+  .sw span { font-family: var(--mono); font-size: 10.5px; color: var(--pg-faint); }
+
+  /* ==========================================================================
+     O MOCKUP. Escopo fechado em .mock — tokens próprios, independentes do
+     tema da página, porque o painel é uma peça de UI escura por decisão.
+     O seletor [data-mock="light"] existe para provar que a paleta é
+     token-driven: trocar 12 variáveis dá o tema claro do DevTools.
+     ========================================================================== */
+  .mock {
+    --ink-900: #16181c;
+    --ink-850: #191c21;
+    --ink-800: #1c1f24;
+    --ink-700: #22262c;
+    --ink-600: #282d34;
+    --line: #2e343c;
+    --line-2: #383f49;
+    --text: #ccd3dc;
+    --dim: #7d8895;
+    --faint: #58616c;
+    --steel: #5b9dd9;
+    --steel-dim: #3d6a92;
+    --ok: #7bab6e;
+    --warn: #c9a250;
+    --err: #d1685f;
+    --violet: #9186c4;
+    --sel: rgba(91, 157, 217, 0.14);
+
+    font-family: var(--sans);
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text);
+    background: var(--ink-900);
+    border: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    height: 592px;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mock[data-mock="light"] {
+    --ink-900: #e9ebee;
+    --ink-850: #f2f3f5;
+    --ink-800: #fbfbfc;
+    --ink-700: #f0f1f4;
+    --ink-600: #e7e9ed;
+    --line: #dcdfe4;
+    --line-2: #c6cbd2;
+    --text: #22262c;
+    --dim: #5f6873;
+    --faint: #8d959e;
+    --steel: #2f6da3;
+    --steel-dim: #7ba4c8;
+    --ok: #43793c;
+    --warn: #8a6416;
+    --err: #a8382e;
+    --violet: #6a5da3;
+    --sel: rgba(47, 109, 163, 0.1);
+  }
+  .mock * { box-sizing: border-box; }
+  .mock button { font-family: inherit; color: inherit; }
+  .mock :focus-visible { outline: 1px solid var(--steel); outline-offset: -1px; }
+
+  /* fita do DevTools, só para situar onde isso vive */
+  .dt-strip {
+    display: flex;
+    align-items: stretch;
+    height: 25px;
+    background: var(--ink-700);
+    border-bottom: 1px solid var(--line);
+    padding-left: 6px;
+    flex: none;
+    user-select: none;
+  }
+  .dt-strip .dt-t {
+    display: flex;
+    align-items: center;
+    padding: 0 9px;
+    font-size: 11px;
+    color: var(--faint);
+    white-space: nowrap;
+  }
+  .dt-strip .dt-t.on {
+    color: var(--text);
+    background: var(--ink-800);
+    box-shadow: inset 0 -1px 0 0 var(--ink-800);
+  }
+
+  /* toolbar da extensão */
+  .tb {
+    flex: none;
+    height: 27px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 8px;
+    background: var(--ink-800);
+    border-bottom: 1px solid var(--line);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+  .brand svg { display: block; }
+  .tb-ctx {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--dim);
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .tb-ctx b { color: var(--text); font-weight: 500; }
+  .tb-ctx .sep { color: var(--faint); }
+  .tb-spacer { flex: 1 1 auto; }
+  .ibtn {
+    flex: none;
+    height: 19px;
+    min-width: 19px;
+    padding: 0 5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: transparent;
+    border: 1px solid transparent;
+    font-size: 11px;
+    color: var(--dim);
+    cursor: pointer;
+  }
+  .ibtn:hover { background: var(--ink-600); color: var(--text); border-color: var(--line); }
+  .ibtn[aria-pressed="true"] { color: var(--steel); border-color: var(--steel-dim); background: var(--sel); }
+
+  /* tabs — sublinhado, alinhadas à esquerda, sem raio */
+  .tabs {
+    flex: none;
+    display: flex;
+    align-items: stretch;
+    height: 28px;
+    background: var(--ink-850);
+    border-bottom: 1px solid var(--line);
+    padding-left: 2px;
+  }
+  .tab {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    background: transparent;
+    border: 0;
+    font-size: 11.5px;
+    color: var(--dim);
+    cursor: pointer;
+  }
+  .tab:hover { color: var(--text); }
+  .tab[aria-selected="true"] { color: var(--text); }
+  .tab[aria-selected="true"]::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: -1px;
+    height: 2px;
+    background: var(--steel);
+  }
+  .tab .count {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--faint);
+    font-variant-numeric: tabular-nums;
+  }
+  .tab[aria-selected="true"] .count { color: var(--dim); }
+
+  .panes { flex: 1 1 auto; min-height: 0; display: flex; }
+  .pane { flex: 1 1 auto; min-width: 0; display: none; flex-direction: column; }
+  .pane[data-on] { display: flex; }
+
+  /* barra de ação/filtro */
+  .abar {
+    flex: none;
+    height: 29px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
+    background: var(--ink-800);
+    border-bottom: 1px solid var(--line);
+  }
+  .abar .grow { flex: 1 1 auto; }
+  .fld {
+    height: 20px;
+    background: var(--ink-900);
+    border: 1px solid var(--line-2);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 0 6px;
+    min-width: 0;
+  }
+  .fld::placeholder { color: var(--faint); }
+  .fld:focus { outline: 0; border-color: var(--steel); }
+  .abar .fld { flex: 1 1 auto; max-width: 340px; }
+  .meta {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--faint);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .vsep { width: 1px; height: 15px; background: var(--line); flex: none; }
+
+  /* ---- data grid --------------------------------------------------------- */
+  .grid {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    background: var(--ink-800);
+  }
+  .gr {
+    display: grid;
+    grid-template-columns: 30px minmax(130px, 1.35fr) 84px minmax(0, 2.3fr) 92px;
+    border-bottom: 1px solid var(--line);
+    border-left: 2px solid transparent;
+  }
+  .gr > * {
+    padding: 4px 8px;
+    min-width: 0;
+    border-right: 1px solid var(--line);
+    overflow: hidden;
+  }
+  .gr > *:last-child { border-right: 0; }
+  .gh {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    background: var(--ink-700);
+    border-bottom: 1px solid var(--line-2);
+  }
+  .gh > * {
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dim);
+    padding-top: 5px;
+    padding-bottom: 5px;
+    user-select: none;
+  }
+  .gb .gr:hover { background: var(--ink-850); }
+  .gb .gr.on { background: var(--sel); border-left-color: var(--steel); }
+  .c-n {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--faint);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+  }
+  .c-name {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    overflow-wrap: anywhere;
+  }
+  .c-name .pre { color: var(--faint); }
+  .c-type { font-family: var(--mono); font-size: 10.5px; color: var(--dim); white-space: nowrap; }
+  .c-val {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--text);
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums;
+    cursor: text;
+  }
+  .c-val.empty { color: var(--faint); }
+  .c-val .q { color: var(--faint); }
+  .c-acts { display: flex; gap: 2px; justify-content: flex-end; opacity: 0; }
+  .gr:hover .c-acts, .gr.on .c-acts, .gr:focus-within .c-acts { opacity: 1; }
+  .abtn {
+    height: 17px;
+    padding: 0 5px;
+    background: transparent;
+    border: 1px solid var(--line-2);
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--dim);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .abtn:hover { color: var(--text); background: var(--ink-600); border-color: var(--steel-dim); }
+  .abtn.db:hover { color: var(--warn); border-color: var(--warn); }
+
+  /* marcadores de estado do campo: faixa na borda esquerda + rótulo no tipo */
+  .gr.st-off { border-left-color: var(--warn); }
+  .gr.st-ro { border-left-color: var(--line-2); }
+  .gr.st-hid { border-left-color: var(--violet); }
+  .gr.st-off .c-type { color: var(--warn); }
+  .gr.st-ro .c-type { color: var(--faint); }
+  .gr.st-hid .c-type { color: var(--violet); }
+
+  /* banda de tabela pai-filho */
+  .band {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 3px 8px 3px 6px;
+    background: var(--ink-700);
+    border-bottom: 1px solid var(--line);
+    border-left: 2px solid var(--steel-dim);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--dim);
+    cursor: pointer;
+    user-select: none;
+    width: 100%;
+    text-align: left;
+    border-top: 0;
+    border-right: 0;
+  }
+  .band:hover { background: var(--ink-600); }
+  .band .tw { color: var(--faint); width: 8px; display: inline-block; }
+  .band b { color: var(--text); font-weight: 500; }
+  .band .how { color: var(--warn); }
+
+  /* planilha de tabela pai-filho: colunas = campos, linhas = ___N */
+  .sheet { overflow-x: auto; background: var(--ink-800); border-bottom: 1px solid var(--line); }
+  .sh-row { display: grid; grid-template-columns: var(--shcols); border-bottom: 1px solid var(--line); }
+  .sh-row:last-child { border-bottom: 0; }
+  .sh-row > * { padding: 4px 8px; min-width: 0; border-right: 1px solid var(--line); }
+  .sh-row > *:last-child { border-right: 0; }
+  .sh-h { background: var(--ink-700); border-bottom: 1px solid var(--line-2); }
+  .sh-hc {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    overflow-wrap: anywhere;
+  }
+  .sh-hc .ty { color: var(--faint); font-size: 9.5px; }
+  .sh-rh {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--ink-700);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+    border-right: 1px solid var(--line-2);
+  }
+  .sh-h .sh-rh { color: var(--faint); letter-spacing: 0.06em; }
+  .sh-copy {
+    flex: none;
+    width: 13px;
+    height: 15px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    color: var(--faint);
+    font-size: 10px;
+    cursor: pointer;
+    opacity: 0;
+  }
+  .sh-row:hover .sh-copy { opacity: 1; }
+  .sh-copy:hover { color: var(--steel); }
+  .sh-c {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    border-left: 2px solid transparent;
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums;
+    cursor: text;
+  }
+  .sheet .sh-row:hover { background: var(--ink-850); }
+  .sheet .sh-row:hover .sh-rh { background: var(--ink-600); }
+  .sh-c.st-off { border-left-color: var(--warn); }
+  .sh-null { color: var(--faint); cursor: default; }
+
+  /* editor inline na célula de valor.
+     A célula normal usa -webkit-box + line-clamp para cortar valor longo; em
+     edição isso precisa voltar a ser bloco, senão o flex do editor quebra. */
+  .c-val.editing { display: block; overflow: visible; -webkit-line-clamp: none; }
+  .ed { display: flex; align-items: center; gap: 4px; }
+  .ed .fld { flex: 1 1 auto; height: 19px; }
+  .ed .was {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--faint);
+    white-space: nowrap;
+    text-decoration: line-through;
+  }
+  .pbtn {
+    height: 19px;
+    padding: 0 7px;
+    background: var(--ink-600);
+    border: 1px solid var(--steel-dim);
+    font-size: 10.5px;
+    color: var(--text);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .pbtn:hover { border-color: var(--steel); background: var(--sel); }
+  .pbtn.warn { border-color: color-mix(in srgb, var(--warn) 55%, transparent); }
+  .pbtn.warn:hover { border-color: var(--warn); color: var(--warn); background: color-mix(in srgb, var(--warn) 12%, transparent); }
+  .pbtn.ghost { background: transparent; border-color: var(--line-2); color: var(--dim); }
+  .pbtn.ghost:hover { color: var(--text); border-color: var(--line-2); background: var(--ink-600); }
+
+  /* command bar */
+  .cbar {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 8px;
+    background: var(--ink-800);
+    border-top: 1px solid var(--line-2);
+    position: relative;
+  }
+  .prompt {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 21px;
+    background: var(--ink-900);
+    border: 1px solid var(--line-2);
+    padding: 0 6px;
+    min-width: 0;
+  }
+  .prompt:focus-within { border-color: var(--steel); }
+  .prompt .caret { color: var(--steel); font-family: var(--mono); font-size: 11px; user-select: none; }
+  .prompt input {
+    flex: 1 1 auto;
+    min-width: 0;
+    background: transparent;
+    border: 0;
+    outline: 0;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 0;
+  }
+  .prompt input::placeholder { color: var(--faint); }
+  .prompt .hint { font-family: var(--mono); font-size: 10px; color: var(--faint); white-space: nowrap; }
+
+  /* autocomplete */
+  .ac {
+    display: none;
+    position: absolute;
+    left: 8px;
+    bottom: 33px;
+    width: min(430px, calc(100% - 16px));
+    max-height: 208px;
+    overflow: auto;
+    background: var(--ink-700);
+    border: 1px solid var(--line-2);
+    box-shadow: 0 -8px 22px rgba(0, 0, 0, 0.4);
+    z-index: 20;
+  }
+  .mock[data-mock="light"] .ac { box-shadow: 0 -8px 22px rgba(20, 30, 45, 0.14); }
+  .ac[data-open] { display: block; }
+  .ac-h {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 8px;
+    font-size: 10px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--faint);
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 0;
+    background: var(--ink-700);
+  }
+  .ac-i {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: baseline;
+    padding: 3px 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+  }
+  .ac-i em { font-style: normal; color: var(--steel); }
+  .ac-i span { color: var(--faint); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
+  .ac-i.on { background: var(--sel); border-left-color: var(--steel); }
+  .ac-f { padding: 4px 8px; font-size: 10px; color: var(--faint); border-top: 1px solid var(--line); font-family: var(--mono); }
+
+  /* status bar */
+  .sbar {
+    flex: none;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px;
+    background: var(--ink-700);
+    border-top: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
+  }
+  .sbar .mk { width: 6px; height: 6px; flex: none; background: var(--faint); }
+  .sbar .mk.ok { background: var(--ok); }
+  .sbar .mk.warn { background: var(--warn); }
+  .sbar .mk.err { background: var(--err); }
+  .sbar .msg { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .sbar .msg b { color: var(--text); font-weight: 500; }
+
+  /* pane: estado (json) */
+  .json {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    background: var(--ink-800);
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    line-height: 1.65;
+  }
+  .json .ln {
+    text-align: right;
+    padding: 6px 7px 6px 0;
+    color: var(--faint);
+    background: var(--ink-850);
+    border-right: 1px solid var(--line);
+    user-select: none;
+    font-size: 10.5px;
+    white-space: pre;
+    font-variant-numeric: tabular-nums;
+  }
+  .json .code { padding: 6px 10px; white-space: pre; overflow-x: auto; }
+  .json .k { color: var(--steel); }
+  .json .s { color: var(--ok); }
+  .json .n { color: var(--violet); }
+  .json .p { color: var(--faint); }
+
+  /* pane: logs */
+  .logs { flex: 1 1 auto; min-height: 0; overflow: auto; background: var(--ink-800); }
+  .lg {
+    display: grid;
+    grid-template-columns: 30px 58px 1fr;
+    gap: 0;
+    border-bottom: 1px solid var(--line);
+    border-left: 2px solid transparent;
+    font-family: var(--mono);
+    font-size: 11.5px;
+  }
+  .lg:hover { background: var(--ink-850); }
+  .lg > * { padding: 4px 8px; min-width: 0; }
+  .lg .lv { font-size: 10px; color: var(--faint); text-align: center; letter-spacing: 0.06em; }
+  .lg .ts { color: var(--faint); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+  .lg .tx { overflow-wrap: anywhere; }
+  .lg.err { border-left-color: var(--err); }
+  .lg.err .lv, .lg.err .tx { color: var(--err); }
+  .lg.wrn { border-left-color: var(--warn); }
+  .lg.wrn .lv, .lg.wrn .tx { color: var(--warn); }
+  .lg .src { color: var(--faint); }
+
+  /* pane: processo — lista de propriedades */
+  .props { flex: 1 1 auto; min-height: 0; overflow: auto; background: var(--ink-800); }
+  .pr {
+    display: grid;
+    grid-template-columns: minmax(150px, 190px) 1fr;
+    border-bottom: 1px solid var(--line);
+  }
+  .pr > * { padding: 5px 9px; min-width: 0; }
+  .pr dt { color: var(--dim); font-size: 11.5px; border-right: 1px solid var(--line); background: var(--ink-850); }
+  .pr dd {
+    margin: 0;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums;
+  }
+  .pr dd .ok { color: var(--ok); }
+  .pgroup {
+    padding: 5px 9px;
+    background: var(--ink-700);
+    border-bottom: 1px solid var(--line);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .todo { padding: 10px 9px; font-size: 11.5px; color: var(--faint); border-bottom: 1px solid var(--line); }
+  .todo b { color: var(--dim); font-weight: 500; }
+
+  .caption {
+    font-size: 11.5px;
+    color: var(--pg-faint);
+    font-family: var(--mono);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+  @media (max-width: 620px) {
+    .mock { height: 520px; }
+    .gr { grid-template-columns: 26px minmax(96px, 1.2fr) 62px minmax(0, 1.6fr) 0; }
+    .gr > .c-acts { display: none; }
+    .dt-strip .dt-t:not(.on) { display: none; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="pg-head">
+    <div class="eyebrow">Proposta de UI · v2</div>
+    <h1>Fluig Debug deixa de ser um formulário empilhado e passa a ser um cliente de dados</h1>
+    <p class="lede">
+      A referência não é dashboard: é <strong>DBeaver / DataGrip</strong>. Chrome de altura fixa,
+      grid denso no centro, command bar ancorada embaixo, status bar dizendo o que acabou de acontecer.
+      Nada de cartão com raio de 12px, nada de pílula colorida, nada de um ícone por seção.
+      Mockup interativo — troque de aba, filtre, dê duplo clique num valor.
+    </p>
+  </header>
+
+  <div class="mock" data-mock="dark" id="mock">
+
+    <div class="dt-strip" aria-hidden="true">
+      <div class="dt-t">Elements</div>
+      <div class="dt-t">Console</div>
+      <div class="dt-t">Sources</div>
+      <div class="dt-t">Network</div>
+      <div class="dt-t on">Fluig Debug</div>
+    </div>
+
+    <div class="tb">
+      <div class="brand">
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+          <rect x="0.5" y="0.5" width="11" height="11" fill="none" stroke="#5b9dd9"></rect>
+          <rect x="3" y="3" width="6" height="2" fill="#5b9dd9"></rect>
+          <rect x="3" y="7" width="4" height="2" fill="#5b9dd9"></rect>
+        </svg>
+        fluig debug
+      </div>
+      <div class="vsep"></div>
+      <div class="tb-ctx">
+        solicitação <b>40812</b><span class="sep">·</span>doc <b>152847</b><span class="sep">·</span>iframe <b>workflowView</b>
+      </div>
+      <div class="tb-spacer"></div>
+      <button class="ibtn" type="button" id="btn-theme" aria-pressed="false" title="Prévia do tema claro do DevTools">tema claro</button>
+      <div class="vsep"></div>
+      <button class="ibtn" type="button" title="Revarrer a página">↻ revarrer</button>
+    </div>
+
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" type="button" data-tab="campos" aria-selected="true">Campos <span class="count">87</span></button>
+      <button class="tab" role="tab" type="button" data-tab="estado" aria-selected="false">Estado</button>
+      <button class="tab" role="tab" type="button" data-tab="logs" aria-selected="false">Logs <span class="count">6</span></button>
+      <button class="tab" role="tab" type="button" data-tab="processo" aria-selected="false">Processo</button>
+    </div>
+
+    <div class="panes">
+
+      <!-- ===================== CAMPOS ===================== -->
+      <div class="pane" data-pane="campos" data-on>
+        <div class="abar">
+          <input class="fld" id="filter" type="text" placeholder="filtrar por nome ou valor" autocomplete="off" aria-label="filtrar campos" />
+          <span class="meta" id="fcount">87 de 87</span>
+          <div class="grow"></div>
+          <span class="meta">3 tabelas · 12 desabilitados</span>
+          <div class="vsep"></div>
+          <button class="ibtn" type="button">exportar</button>
+        </div>
+
+        <div class="grid" id="grid">
+          <div class="gr gh" role="row">
+            <div class="c-n">#</div>
+            <div>campo</div>
+            <div>tipo</div>
+            <div>valor</div>
+            <div></div>
+          </div>
+
+          <div class="gb" id="gbody">
+            <div class="gr" data-f="empresa 1 - STRATEGI TECNOLOGIA LTDA">
+              <div class="c-n">1</div>
+              <div class="c-name">empresa</div>
+              <div class="c-type">select-one</div>
+              <div class="c-val" data-edit>1 - STRATEGI TECNOLOGIA LTDA</div>
+              <div class="c-acts"><button class="abtn" type="button">setar</button><button class="abtn db" type="button" title="Gravar no banco via dsSetCardValue">banco</button></div>
+            </div>
+
+            <div class="gr" data-f="solicitante ryan.paulista">
+              <div class="c-n">2</div>
+              <div class="c-name">solicitante</div>
+              <div class="c-type">text</div>
+              <div class="c-val" data-edit>ryan.paulista</div>
+              <div class="c-acts"><button class="abtn" type="button">setar</button><button class="abtn db" type="button">banco</button></div>
+            </div>
+
+            <div class="gr" data-f="dataSolicitacao 03/08/2026">
+              <div class="c-n">3</div>
+              <div class="c-name">dataSolicitacao</div>
+              <div class="c-type">text</div>
+              <div class="c-val" data-edit>03/08/2026</div>
+              <div class="c-acts"><button class="abtn" type="button">setar</button><button class="abtn db" type="button">banco</button></div>
+            </div>
+
+            <div class="gr" data-f="centroCusto 4102 - TI INFRAESTRUTURA">
+              <div class="c-n">4</div>
+              <div class="c-name">centroCusto</div>
+              <div class="c-type">select-one</div>
+              <div class="c-val" data-edit>4102 - TI / INFRAESTRUTURA</div>
+              <div class="c-acts"><button class="abtn" type="button">setar</button><button class="abtn db" type="button">banco</button></div>
+            </div>
+
+            <div class="gr on" data-f="valorTotal 12500.00" id="row-edit">
+              <div class="c-n">5</div>
+              <div class="c-name">valorTotal</div>
+              <div class="c-type">text</div>
+              <div class="c-val" data-edit data-value="12500.00">12500.00</div>
+              <div class="c-acts"><button class="abtn" type="button">setar</button><button class="abtn db" type="button">banco</button></div>
+            </div>
+
+            <div class="gr st-off" data-f="aprovadorNivel2_ desabilitado GERENCIA">
+              <div class="c-n">6</div>
+              <div class="c-name">aprovadorNivel2<span class="pre">_</span></div>
+              <div class="c-type">off (_)</div>
+              <div class="c-val" data-edit>maria.andrade</div>
+              <div class="c-acts"><button class="abtn db" type="button" title="DOM não aceita: grava no banco">banco</button></div>
+            </div>
+
+            <div class="gr st-ro" data-f="parecerGestor Aprovado com ressalva no prazo de entrega">
+              <div class="c-n">7</div>
+              <div class="c-name">parecerGestor</div>
+              <div class="c-type">span ro</div>
+              <div class="c-val" data-edit>Aprovado com ressalva: prazo de entrega precisa ser confirmado com o fornecedor antes do faturamento.</div>
+              <div class="c-acts"><button class="abtn db" type="button">banco</button></div>
+            </div>
+
+            <div class="gr" data-f="observacao textarea">
+              <div class="c-n">8</div>
+              <div class="c-name">observacao</div>
+              <div class="c-type">textarea</div>
+              <div class="c-val empty" data-edit><span class="q">vazio</span></div>
+              <div class="c-acts"><button class="abtn" type="button">setar</button><button class="abtn db" type="button">banco</button></div>
+            </div>
+
+            <div class="gr" data-f="flagUrgente checkbox true">
+              <div class="c-n">9</div>
+              <div class="c-name">flagUrgente</div>
+              <div class="c-type">checkbox</div>
+              <div class="c-val" data-edit>true</div>
+              <div class="c-acts"><button class="abtn" type="button">setar</button><button class="abtn db" type="button">banco</button></div>
+            </div>
+
+            <div class="gr st-hid" data-f="statusInterno hidden json">
+              <div class="c-n">10</div>
+              <div class="c-name">statusInterno</div>
+              <div class="c-type">hidden</div>
+              <div class="c-val" data-edit>{"etapa":"aprovacao_gerencial","tentativas":2,"ultimoErro":null}</div>
+              <div class="c-acts"><button class="abtn" type="button">setar</button><button class="abtn db" type="button">banco</button></div>
+            </div>
+
+            <button class="band" type="button" data-band="itens" aria-expanded="true">
+              <span class="tw">▾</span> tabela <b>itens</b> · 3 linha(s) · 5 campo(s)
+            </button>
+
+            <div class="sheet" data-sheet="itens" style="--shcols: 46px repeat(5, minmax(104px, 1fr))">
+              <div class="sh-row sh-h">
+                <div class="sh-rh">___</div>
+                <div class="sh-hc">codProduto<span class="ty">text</span></div>
+                <div class="sh-hc">descProduto<span class="ty">text</span></div>
+                <div class="sh-hc">qtd<span class="ty">text</span></div>
+                <div class="sh-hc">valorUnit<span class="ty">text</span></div>
+                <div class="sh-hc">centroCusto<span class="ty">select-one</span></div>
+              </div>
+              <div class="sh-row" data-f="codProduto 000114 Monitor 27 IPS qtd 5 valorUnit 1890.00 4102">
+                <div class="sh-rh"><span>1</span><button class="sh-copy" type="button" title="Copiar esta linha como JSON">⧉</button></div>
+                <div class="sh-c">000114</div>
+                <div class="sh-c">Monitor 27" IPS</div>
+                <div class="sh-c">5</div>
+                <div class="sh-c">1890.00</div>
+                <div class="sh-c">4102 - TI</div>
+              </div>
+              <div class="sh-row" data-f="codProduto 000237 Dock station USB-C qtd 2 valorUnit 890.00 4102">
+                <div class="sh-rh"><span>3</span><button class="sh-copy" type="button" title="Copiar esta linha como JSON">⧉</button></div>
+                <div class="sh-c">000237</div>
+                <div class="sh-c">Dock station USB-C</div>
+                <div class="sh-c">2</div>
+                <div class="sh-c st-off">890.00</div>
+                <div class="sh-c">4102 - TI</div>
+              </div>
+              <div class="sh-row" data-f="codProduto 000512 Cabo HDMI 2m qtd 8 4102">
+                <div class="sh-rh"><span>4</span><button class="sh-copy" type="button" title="Copiar esta linha como JSON">⧉</button></div>
+                <div class="sh-c">000512</div>
+                <div class="sh-c">Cabo HDMI 2m</div>
+                <div class="sh-c">8</div>
+                <div class="sh-c sh-null" title="campo ausente nesta linha">—</div>
+                <div class="sh-c">4102 - TI</div>
+              </div>
+            </div>
+
+            <button class="band" type="button" data-band="parcelas" aria-expanded="true">
+              <span class="tw">▾</span> tabela <b>tabela 3</b> · 2 linha(s) · 3 campo(s)
+              <span class="how">sem tablename — agrupada pela posição da tabela</span>
+            </button>
+
+            <div class="sheet" data-sheet="parcelas" style="--shcols: 46px repeat(3, minmax(104px, 1fr))">
+              <div class="sh-row sh-h">
+                <div class="sh-rh">___</div>
+                <div class="sh-hc">parcela<span class="ty">text</span></div>
+                <div class="sh-hc">vencimento<span class="ty">text</span></div>
+                <div class="sh-hc">valor<span class="ty">text</span></div>
+              </div>
+              <div class="sh-row" data-f="parcela 1/2 vencimento 10/09/2026 valor 6250.00">
+                <div class="sh-rh"><span>1</span><button class="sh-copy" type="button" title="Copiar esta linha como JSON">⧉</button></div>
+                <div class="sh-c">1/2</div>
+                <div class="sh-c">10/09/2026</div>
+                <div class="sh-c">6250.00</div>
+              </div>
+              <div class="sh-row" data-f="parcela 2/2 vencimento 10/10/2026 valor 6250.00">
+                <div class="sh-rh"><span>2</span><button class="sh-copy" type="button" title="Copiar esta linha como JSON">⧉</button></div>
+                <div class="sh-c">2/2</div>
+                <div class="sh-c">10/10/2026</div>
+                <div class="sh-c">6250.00</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cbar">
+          <div class="ac" id="ac">
+            <div class="ac-h"><span>campos da página</span><span id="ac-n">87</span></div>
+            <div id="ac-list"></div>
+            <div class="ac-f">↑↓ navega · enter lê · tab completa · ___N escolhe a linha</div>
+          </div>
+          <div class="prompt">
+            <span class="caret">›</span>
+            <input id="cmd" type="text" placeholder="nome do campo — enter lê, ctrl+enter seta" autocomplete="off" aria-label="comando" />
+            <span class="hint">87</span>
+          </div>
+          <button class="pbtn ghost" type="button">ler</button>
+          <button class="pbtn ghost" type="button">histórico <span style="color:var(--faint)">14</span></button>
+        </div>
+
+        <div class="sbar">
+          <span class="mk ok" id="sb-mk"></span>
+          <span class="msg" id="sb-msg"><b>valorTotal</b> setado no DOM: 10000.00 → 12500.00</span>
+          <span>87 campos</span>
+          <span class="vsep"></span>
+          <span id="sb-time">14:07:42</span>
+        </div>
+      </div>
+
+      <!-- ===================== ESTADO ===================== -->
+      <div class="pane" data-pane="estado">
+        <div class="abar">
+          <button class="ibtn" type="button" aria-pressed="true">json</button>
+          <button class="ibtn" type="button">agrupado por tabela</button>
+          <div class="vsep"></div>
+          <span class="meta">gerado 14:07:31 · 87 campos · 6 logs · 14,2 kB</span>
+          <div class="grow"></div>
+          <button class="ibtn" type="button">copiar</button>
+          <button class="ibtn" type="button">salvar .json</button>
+        </div>
+        <div class="json">
+          <div class="ln"> 1
+ 2
+ 3
+ 4
+ 5
+ 6
+ 7
+ 8
+ 9
+10
+11
+12
+13
+14
+15
+16
+17
+18
+19
+20
+21
+22
+23</div>
+          <div class="code"><span class="p">{</span>
+  <span class="k">"solicitacao"</span><span class="p">:</span> <span class="n">40812</span><span class="p">,</span>
+  <span class="k">"documentId"</span><span class="p">:</span> <span class="s">"152847"</span><span class="p">,</span>
+  <span class="k">"frame"</span><span class="p">:</span> <span class="s">"iframe"</span><span class="p">,</span>
+  <span class="k">"campos"</span><span class="p">:</span> <span class="p">{</span>
+    <span class="k">"empresa"</span><span class="p">:</span> <span class="s">"1 - STRATEGI TECNOLOGIA LTDA"</span><span class="p">,</span>
+    <span class="k">"solicitante"</span><span class="p">:</span> <span class="s">"ryan.paulista"</span><span class="p">,</span>
+    <span class="k">"valorTotal"</span><span class="p">:</span> <span class="s">"12500.00"</span><span class="p">,</span>
+    <span class="k">"aprovadorNivel2_"</span><span class="p">:</span> <span class="s">"maria.andrade"</span><span class="p">,</span>
+    <span class="k">"observacao"</span><span class="p">:</span> <span class="s">""</span>
+  <span class="p">},</span>
+  <span class="k">"tabelas"</span><span class="p">:</span> <span class="p">{</span>
+    <span class="k">"itens"</span><span class="p">:</span> <span class="p">[</span>
+      <span class="p">{</span> <span class="k">"codProduto"</span><span class="p">:</span> <span class="s">"000114"</span><span class="p">,</span> <span class="k">"qtd"</span><span class="p">:</span> <span class="s">"5"</span> <span class="p">},</span>
+      <span class="p">{</span> <span class="k">"codProduto"</span><span class="p">:</span> <span class="s">"000237"</span><span class="p">,</span> <span class="k">"qtd"</span><span class="p">:</span> <span class="s">"2"</span> <span class="p">}</span>
+    <span class="p">]</span>
+  <span class="p">},</span>
+  <span class="k">"logs"</span><span class="p">:</span> <span class="p">[</span>
+    <span class="p">{</span> <span class="k">"level"</span><span class="p">:</span> <span class="s">"error"</span><span class="p">,</span> <span class="k">"text"</span><span class="p">:</span> <span class="s">"$(...).val is not a function"</span> <span class="p">}</span>
+  <span class="p">]</span>
+<span class="p">}</span></div>
+        </div>
+        <div class="sbar">
+          <span class="mk ok"></span>
+          <span class="msg">dump copiado — pronto para colar como contexto</span>
+          <span>14,2 kB</span>
+          <span class="vsep"></span>
+          <span>14:07:31</span>
+        </div>
+      </div>
+
+      <!-- ===================== LOGS ===================== -->
+      <div class="pane" data-pane="logs">
+        <div class="abar">
+          <input class="fld" type="text" placeholder="filtrar mensagens" autocomplete="off" aria-label="filtrar logs" />
+          <div class="vsep"></div>
+          <button class="ibtn" type="button" aria-pressed="true">tudo</button>
+          <button class="ibtn" type="button">erros 2</button>
+          <button class="ibtn" type="button">avisos 1</button>
+          <div class="grow"></div>
+          <button class="ibtn" type="button">limpar</button>
+        </div>
+        <div class="logs">
+          <div class="lg"><span class="lv">log</span><span class="ts">14:06:58</span><span class="tx">form carregado — 87 campos, 3 tabelas <span class="src">form.js:214</span></span></div>
+          <div class="lg wrn"><span class="lv">avi</span><span class="ts">14:07:03</span><span class="tx">dataset dsCentroCusto retornou 0 linhas para empresa=1 <span class="src">dataset.js:88</span></span></div>
+          <div class="lg err"><span class="lv">err</span><span class="ts">14:07:11</span><span class="tx">Uncaught TypeError: $(...).val is not a function <span class="src">customForm.js:412</span></span></div>
+          <div class="lg"><span class="lv">log</span><span class="ts">14:07:11</span><span class="tx">recalculo de valorTotal abortado <span class="src">customForm.js:418</span></span></div>
+          <div class="lg err"><span class="lv">err</span><span class="ts">14:07:24</span><span class="tx">POST /ecm/api/rest/ecm/formService/saveCard 500 (Internal Server Error)</span></div>
+          <div class="lg"><span class="lv">log</span><span class="ts">14:07:42</span><span class="tx">[fluig-debug] set valorTotal 10000.00 → 12500.00</span></div>
+        </div>
+        <div class="sbar">
+          <span class="mk err"></span>
+          <span class="msg">2 erros desde que o DevTools foi aberto — vão junto no dump</span>
+          <span>6 linhas</span>
+          <span class="vsep"></span>
+          <span>14:07:42</span>
+        </div>
+      </div>
+
+      <!-- ===================== PROCESSO ===================== -->
+      <div class="pane" data-pane="processo">
+        <div class="abar">
+          <span class="meta">resolvido a partir da URL · workflowProcess → cardDocumentId</span>
+          <div class="grow"></div>
+          <button class="ibtn" type="button">↻ resolver de novo</button>
+        </div>
+        <div class="props">
+          <div class="pgroup">identificação</div>
+          <dl class="pr"><dt>solicitação</dt><dd>40812</dd></dl>
+          <dl class="pr"><dt>parâmetro na URL</dt><dd>app_ecm_workflowview_detailsProcessInstanceID</dd></dl>
+          <dl class="pr"><dt>documentId</dt><dd><span class="ok">152847</span></dd></dl>
+          <dl class="pr"><dt>cardIndexDocumentId</dt><dd>152848</dd></dl>
+          <dl class="pr"><dt>frame</dt><dd>iframe · workflowView</dd></dl>
+          <div class="pgroup">workflow</div>
+          <dl class="pr"><dt>processo</dt><dd>SOLICITACAO_COMPRA · v12</dd></dl>
+          <dl class="pr"><dt>atividade atual</dt><dd>34 — Aprovação gerencial</dd></dl>
+          <dl class="pr"><dt>estado</dt><dd>em andamento</dd></dl>
+          <dl class="pr"><dt>designado</dt><dd>maria.andrade</dd></dl>
+          <div class="pgroup">próximos passos desta aba</div>
+          <div class="todo"><b>mover solicitação</b> — disparar a próxima atividade sem sair do painel</div>
+          <div class="todo"><b>histórico de movimentações</b> — grid de quem passou por onde e quando</div>
+        </div>
+        <div class="sbar">
+          <span class="mk ok"></span>
+          <span class="msg">documentId resolvido em 340 ms</span>
+          <span>workflowProcess</span>
+          <span class="vsep"></span>
+          <span>14:06:59</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <p class="caption">
+    <span>duplo clique em qualquer valor → editor inline</span>
+    <span>planilha: colunas = campos, linhas = ___N</span>
+    <span>filtro esconde linhas, não colunas</span>
+    <span>› prompt tem autocomplete</span>
+    <span>“tema claro” troca 12 tokens</span>
+  </p>
+
+  <section class="sec">
+    <div class="sec-title"><h2>As seis decisões que sustentam o desenho</h2><span>por que, não só o quê</span></div>
+    <div class="cards">
+      <div class="card">
+        <b>O grid é a tela principal, não um resultado</b>
+        <p>Hoje “ler campo” e “dump” são coisas separadas. Se todos os campos já estão numa tabela editável, ler é olhar e setar é digitar na célula. O formulário de leitura vira atalho, não a porta de entrada.</p>
+      </div>
+      <div class="card">
+        <b>Alturas fixas, um único scroll</b>
+        <p>Toolbar 27px, tabs 28px, barra de ação 29px, status 22px — o miolo é o que rola. Um painel do DevTools é curto e largo; nada de <code>padding: 16px</code> na página inteira e três <code>&lt;section&gt;</code> de 22px de margem.</p>
+      </div>
+      <div class="card">
+        <b>Estado do campo entra na forma, não em pílula</b>
+        <p>Faixa de 2px na borda esquerda: âmbar = desabilitado <code>_</code>, cinza = <code>span</code> só-leitura, violeta = <code>hidden</code>. Dá para varrer a coluna sem ler nenhuma palavra. Na planilha a faixa vai na própria célula.</p>
+      </div>
+      <div class="card">
+        <b>Tabela pai-filho é planilha, não lista</b>
+        <p>Colunas = campos, linhas = <code>___N</code>. Uma tabela com 6 campos e 5 linhas virava 30 linhas soltas, e a relação entre elas ficava só no sufixo. A coluna <code>___</code> é fixa ao rolar de lado; campo ausente numa linha vira <code>—</code>, porque vazio é um valor possível.</p>
+      </div>
+      <div class="card">
+        <b>Agrupar tabela não pode depender só de <code>tablename</code></b>
+        <p>Em formulário real o atributo falta com frequência, e aí linhas de tabelas diferentes se intercalam num balaio só. O agrupamento desce por fallback (<code>tablename</code> → id → posição do <code>&lt;table&gt;</code> → container) e a banda diz em âmbar qual critério usou quando não foi o primeiro.</p>
+      </div>
+      <div class="card">
+        <b>“Banco” é sempre o botão âmbar</b>
+        <p><code>dsSetCardValue</code> escreve fora do DOM e não tem ctrl+z. A cor de aviso é reservada só para essa ação — e ela é a <em>única</em> disponível nas linhas desabilitadas, onde o DOM não resolve mesmo.</p>
+      </div>
+      <div class="card">
+        <b>A solicitação sai do topo e vira contexto</b>
+        <p>Número e <code>documentId</code> ficam na toolbar em mono, sempre visíveis. O detalhe da resolução migra para a aba Processo — que é onde as funções de workflow vão nascer. Recupera ~90px de altura útil.</p>
+      </div>
+      <div class="card">
+        <b>Status bar em vez de mensagem por seção</b>
+        <p>Um lugar só para “o que acabou de acontecer”, com marcador quadrado de 6px e hora tabular. Some o <code>.out</code> repetido embaixo de cada bloco, que hoje empurra o conteúdo para baixo a cada ação.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-title"><h2>O que foi deliberadamente descartado do primeiro mockup</h2><span>é aqui que mora o “cheiro de IA”</span></div>
+    <ul class="killed">
+      <li><i>✕</i><span><b>Raio de 12px em tudo.</b> Ferramenta de dev usa 0–2px. Cantos redondos grandes empurram a peça para o território de landing page.</span></li>
+      <li><i>✕</i><span><b>Cartão dentro de cartão.</b> Três superfícies aninhadas com borda e fundo próprios para caber dois inputs. Aqui o separador é hairline de 1px.</span></li>
+      <li><i>✕</i><span><b>Pílula com fundo tingido</b> (“avançado”, “solicitação 40812”). Virou texto mono na toolbar e cor na borda da linha.</span></li>
+      <li><i>✕</i><span><b>Um ícone colorido por seção.</b> Ícone só onde ele substitui palavra e é clicável; título de seção não precisa de mascote.</span></li>
+      <li><i>✕</i><span><b>Empty state centralizado com ícone gigante.</b> A aba Processo já mostra dado real e lista o que falta, alinhado à esquerda.</span></li>
+      <li><i>✕</i><span><b>Tabs em pílula com <code>flex: 1</code>.</b> Tabs de IDE são estreitas, à esquerda, e a ativa é marcada por sublinhado de 2px.</span></li>
+    </ul>
+  </section>
+
+  <section class="sec">
+    <div class="sec-title"><h2>Tokens</h2><span>o tema claro é troca de variável, não outro CSS</span></div>
+    <div class="swatches">
+      <div class="sw"><i style="background:#16181c"></i><div><b>chão</b><span>#16181c</span></div></div>
+      <div class="sw"><i style="background:#1c1f24"></i><div><b>painel / grid</b><span>#1c1f24</span></div></div>
+      <div class="sw"><i style="background:#22262c"></i><div><b>toolbar / header</b><span>#22262c</span></div></div>
+      <div class="sw"><i style="background:#2e343c"></i><div><b>hairline</b><span>#2e343c</span></div></div>
+      <div class="sw"><i style="background:#ccd3dc"></i><div><b>texto</b><span>#ccd3dc</span></div></div>
+      <div class="sw"><i style="background:#7d8895"></i><div><b>texto dim</b><span>#7d8895</span></div></div>
+      <div class="sw"><i style="background:#5b9dd9"></i><div><b>aço · acento</b><span>#5b9dd9</span></div></div>
+      <div class="sw"><i style="background:#c9a250"></i><div><b>banco · desabilitado</b><span>#c9a250</span></div></div>
+      <div class="sw"><i style="background:#7bab6e"></i><div><b>ok</b><span>#7bab6e</span></div></div>
+      <div class="sw"><i style="background:#d1685f"></i><div><b>erro</b><span>#d1685f</span></div></div>
+      <div class="sw"><i style="background:#9186c4"></i><div><b>hidden</b><span>#9186c4</span></div></div>
+    </div>
+    <p class="lede" style="font-size:12.5px">
+      Neutros com viés azul de propósito: cinza puro é o que sai quando ninguém escolheu.
+      O acento aço aparece em três lugares e só neles — sublinhado da aba ativa, seleção de linha, foco.
+      Cores semânticas não são acento: âmbar é sempre escrita no banco, vermelho é sempre erro.
+      Tipografia é sans do sistema a 11,5px no chrome (webfont num painel do DevTools soa falso) e
+      mono tabular em <em>todo</em> dado — nome de campo, valor, id, hora.
+    </p>
+  </section>
+
+</div>
+
+<script>
+  (function () {
+    var mock = document.getElementById('mock');
+
+    /* --- tabs ------------------------------------------------------------- */
+    var tabs = Array.prototype.slice.call(mock.querySelectorAll('.tab'));
+    var panes = Array.prototype.slice.call(mock.querySelectorAll('.pane'));
+    tabs.forEach(function (t) {
+      t.addEventListener('click', function () {
+        tabs.forEach(function (x) { x.setAttribute('aria-selected', String(x === t)); });
+        panes.forEach(function (p) {
+          if (p.dataset.pane === t.dataset.tab) { p.setAttribute('data-on', ''); }
+          else { p.removeAttribute('data-on'); }
+        });
+      });
+    });
+
+    /* --- tema claro (prova que a paleta é token-driven) ------------------- */
+    var themeBtn = document.getElementById('btn-theme');
+    themeBtn.addEventListener('click', function () {
+      var light = mock.getAttribute('data-mock') === 'light';
+      mock.setAttribute('data-mock', light ? 'dark' : 'light');
+      themeBtn.setAttribute('aria-pressed', String(!light));
+      themeBtn.textContent = light ? 'tema claro' : 'tema escuro';
+    });
+
+    /* --- status bar ------------------------------------------------------- */
+    var sbMk = document.getElementById('sb-mk');
+    var sbMsg = document.getElementById('sb-msg');
+    var sbTime = document.getElementById('sb-time');
+    var clock = 14 * 3600 + 7 * 60 + 42;
+    function say(kind, html) {
+      clock += 7;
+      sbMk.className = 'mk ' + kind;
+      sbMsg.innerHTML = html;
+      var h = Math.floor(clock / 3600), m = Math.floor((clock % 3600) / 60), s = clock % 60;
+      sbTime.textContent = [h, m, s].map(function (v) { return String(v).padStart(2, '0'); }).join(':');
+    }
+
+    /* --- filtro incremental ---------------------------------------------- */
+    var rows = Array.prototype.slice.call(mock.querySelectorAll('#gbody .gr:not(.gh)'));
+    var sheets = Array.prototype.slice.call(mock.querySelectorAll('#gbody .sheet'));
+    var bands = Array.prototype.slice.call(mock.querySelectorAll('#gbody .band'));
+    var filter = document.getElementById('filter');
+    var fcount = document.getElementById('fcount');
+
+    function sheetFor(key) {
+      return mock.querySelector('#gbody .sheet[data-sheet="' + key + '"]');
+    }
+    function sheetDataRows(sheet) {
+      return Array.prototype.slice.call(sheet.querySelectorAll('.sh-row:not(.sh-h)'));
+    }
+
+    filter.addEventListener('input', function () {
+      var q = filter.value.trim().toLowerCase();
+      var shown = 0;
+      rows.forEach(function (r) {
+        var hit = !q || (r.dataset.f || '').toLowerCase().indexOf(q) !== -1;
+        r.style.display = hit ? '' : 'none';
+        if (hit) { shown++; }
+      });
+      // Numa planilha o filtro esconde LINHAS, nunca colunas.
+      sheets.forEach(function (s) {
+        sheetDataRows(s).forEach(function (r) {
+          var hit = !q || (r.dataset.f || '').toLowerCase().indexOf(q) !== -1;
+          r.style.display = hit ? '' : 'none';
+          if (hit) { shown++; }
+        });
+      });
+      bands.forEach(function (b) {
+        var sheet = sheetFor(b.dataset.band);
+        var any = sheet && sheetDataRows(sheet).some(function (r) { return r.style.display !== 'none'; });
+        b.style.display = any ? '' : 'none';
+        if (sheet) { sheet.style.display = any ? '' : 'none'; }
+      });
+      fcount.textContent = q ? shown + ' de 87' : '87 de 87';
+      if (q) { say('', 'filtro <b>' + q.replace(/[<>&]/g, '') + '</b> · ' + shown + ' ocorrências'); }
+    });
+
+    /* --- editor inline na célula de valor -------------------------------- */
+    var open = null;
+
+    // O nome do campo: no grid plano vem da coluna "campo"; na planilha, do
+    // cabeçalho da coluna + o número da linha.
+    function cellName(cell) {
+      var row = cell.closest('.gr');
+      if (row) { return row.querySelector('.c-name').textContent; }
+      var shRow = cell.closest('.sh-row');
+      var sheet = cell.closest('.sheet');
+      if (!shRow || !sheet) { return 'campo'; }
+      var at = Array.prototype.indexOf.call(shRow.children, cell);
+      var col = sheet.querySelector('.sh-h').children[at];
+      var n = shRow.querySelector('.sh-rh span').textContent;
+      return (col ? col.childNodes[0].textContent.trim() : 'campo') + '___' + n;
+    }
+    // Onde mora o destaque: a linha no grid plano, a própria célula na planilha
+    // (uma linha de planilha tem vários campos, com estados diferentes).
+    function hostOf(cell) {
+      return cell.classList.contains('sh-c') ? cell : cell.closest('.gr');
+    }
+
+    function closeEditor(restore) {
+      if (!open) { return; }
+      open.cell.innerHTML = open.html;
+      open.cell.classList.remove('editing');
+      open.cell.classList.toggle('empty', open.wasEmpty);
+      open.host.classList.remove('on');
+      open = null;
+      if (restore) { say('', 'edição cancelada'); }
+    }
+    function openEditor(cell) {
+      if (open && open.cell === cell) { return; }
+      if (cell.classList.contains('sh-null')) { return; }
+      closeEditor(false);
+      var host = hostOf(cell);
+      var name = cellName(cell);
+      var current = cell.dataset.value || (cell.classList.contains('empty') ? '' : cell.textContent.trim());
+      var canDom = !host.classList.contains('st-off') && !host.classList.contains('st-ro');
+      open = { cell: cell, host: host, html: cell.innerHTML, wasEmpty: cell.classList.contains('empty') };
+      cell.classList.remove('empty');
+      cell.classList.add('editing');
+      cell.innerHTML = '';
+      var ed = document.createElement('div');
+      ed.className = 'ed';
+      var inp = document.createElement('input');
+      inp.className = 'fld';
+      inp.type = 'text';
+      inp.value = current;
+      inp.setAttribute('aria-label', 'novo valor de ' + name);
+      ed.appendChild(inp);
+      if (current) {
+        var was = document.createElement('span');
+        was.className = 'was';
+        was.textContent = current.length > 22 ? current.slice(0, 22) + '…' : current;
+        ed.appendChild(was);
+      }
+      if (canDom) {
+        var bDom = document.createElement('button');
+        bDom.className = 'pbtn';
+        bDom.type = 'button';
+        bDom.textContent = 'DOM';
+        bDom.title = '$(campo).val(valor)';
+        bDom.addEventListener('click', function () { apply('DOM', 'ok'); });
+        ed.appendChild(bDom);
+      }
+      var bDb = document.createElement('button');
+      bDb.className = 'pbtn warn';
+      bDb.type = 'button';
+      bDb.textContent = 'banco';
+      bDb.title = 'dsSetCardValue — grava fora do DOM, sem desfazer';
+      bDb.addEventListener('click', function () { apply('banco', 'warn'); });
+      ed.appendChild(bDb);
+      cell.appendChild(ed);
+      host.classList.add('on');
+      inp.focus();
+      inp.select();
+
+      function apply(where, kind) {
+        var next = inp.value;
+        cell.dataset.value = next;
+        open.html = next ? next.replace(/[<>&]/g, function (c) {
+          return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c];
+        }) : '<span class="q">vazio</span>';
+        open.wasEmpty = !next;
+        closeEditor(false);
+        say(kind, '<b>' + name + '</b> ' + (where === 'DOM' ? 'setado no DOM' : 'gravado no banco (dsSetCardValue)') +
+          ': ' + (current || 'vazio') + ' → ' + (next || 'vazio'));
+      }
+      inp.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); apply(canDom ? 'DOM' : 'banco', canDom ? 'ok' : 'warn'); }
+        if (e.key === 'Escape') { e.preventDefault(); closeEditor(true); }
+      });
+    }
+    // Duplo clique edita em qualquer célula de valor — grid plano ou planilha.
+    mock.querySelectorAll('#gbody .c-val[data-edit], #gbody .sh-c').forEach(function (cell) {
+      cell.addEventListener('dblclick', function () { openEditor(cell); });
+    });
+    mock.querySelectorAll('#gbody .abtn').forEach(function (b) {
+      b.addEventListener('click', function () {
+        openEditor(b.closest('.gr').querySelector('.c-val'));
+      });
+    });
+    mock.querySelectorAll('#gbody .sh-copy').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var n = b.closest('.sh-row').querySelector('.sh-rh span').textContent;
+        var t = b.closest('.sheet').dataset.sheet;
+        say('ok', 'linha <b>' + n + '</b> de <b>' + t + '</b> copiada como JSON');
+      });
+    });
+
+    /* --- banda colapsável ------------------------------------------------ */
+    bands.forEach(function (b) {
+      b.addEventListener('click', function () {
+        var openB = b.getAttribute('aria-expanded') === 'true';
+        b.setAttribute('aria-expanded', String(!openB));
+        b.querySelector('.tw').textContent = openB ? '▸' : '▾';
+        var sheet = sheetFor(b.dataset.band);
+        if (sheet) { sheet.style.display = openB ? 'none' : ''; }
+      });
+    });
+
+    /* --- autocomplete do prompt ------------------------------------------ */
+    var FIELDS = [
+      ['empresa', '1 - STRATEGI TECNOLOGIA LTDA'],
+      ['solicitante', 'ryan.paulista'],
+      ['dataSolicitacao', '03/08/2026'],
+      ['centroCusto', '4102 - TI / INFRAESTRUTURA'],
+      ['valorTotal', '12500.00'],
+      ['valorAprovado', '0.00'],
+      ['aprovadorNivel2_', 'maria.andrade · desabilitado'],
+      ['parecerGestor', 'Aprovado com ressalva… · span'],
+      ['observacao', 'vazio'],
+      ['flagUrgente', 'true'],
+      ['statusInterno', '{"etapa":"aprovacao_ger… · hidden'],
+      ['codProduto___1', '000114'],
+      ['descProduto___1', 'Monitor 27" IPS'],
+      ['qtd___1', '5'],
+      ['valorUnit___1', '1890.00'],
+      ['codProduto___2', '000237']
+    ];
+    var cmd = document.getElementById('cmd');
+    var ac = document.getElementById('ac');
+    var acList = document.getElementById('ac-list');
+    var acN = document.getElementById('ac-n');
+    var acIdx = 0;
+    var acHits = [];
+    function esc(s) {
+      return s.replace(/[<>&]/g, function (c) { return { '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]; });
+    }
+    function paintAc() {
+      var q = cmd.value.trim().toLowerCase();
+      acHits = FIELDS.filter(function (f) { return !q || f[0].toLowerCase().indexOf(q) !== -1; });
+      acN.textContent = acHits.length;
+      if (acIdx >= acHits.length) { acIdx = 0; }
+      acList.innerHTML = acHits.map(function (f, i) {
+        var name = esc(f[0]);
+        if (q) {
+          var at = f[0].toLowerCase().indexOf(q);
+          name = esc(f[0].slice(0, at)) + '<em>' + esc(f[0].slice(at, at + q.length)) + '</em>' + esc(f[0].slice(at + q.length));
+        }
+        return '<div class="ac-i' + (i === acIdx ? ' on' : '') + '" data-i="' + i + '">' +
+          '<span>' + name + '</span><span>' + esc(f[1]) + '</span></div>';
+      }).join('') || '<div class="ac-f">nenhum campo com esse nome</div>';
+      Array.prototype.forEach.call(acList.querySelectorAll('.ac-i'), function (el) {
+        el.addEventListener('mousedown', function (e) {
+          e.preventDefault();
+          pick(Number(el.dataset.i));
+        });
+      });
+    }
+    function pick(i) {
+      var f = acHits[i];
+      if (!f) { return; }
+      cmd.value = f[0];
+      ac.removeAttribute('data-open');
+      say('ok', '<b>' + f[0] + '</b> lido: ' + f[1]);
+    }
+    cmd.addEventListener('focus', function () { paintAc(); ac.setAttribute('data-open', ''); });
+    cmd.addEventListener('blur', function () { ac.removeAttribute('data-open'); });
+    cmd.addEventListener('input', function () { acIdx = 0; paintAc(); ac.setAttribute('data-open', ''); });
+    cmd.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        acIdx = Math.max(0, Math.min(acHits.length - 1, acIdx + (e.key === 'ArrowDown' ? 1 : -1)));
+        paintAc();
+        var on = acList.querySelector('.ac-i.on');
+        if (on) { on.scrollIntoView({ block: 'nearest' }); }
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        pick(acIdx);
+      } else if (e.key === 'Escape') {
+        ac.removeAttribute('data-open');
+      }
+    });
+    paintAc();
+
+    /* estado inicial: uma linha já em edição, para o desenho se explicar */
+    openEditor(document.querySelector('#row-edit .c-val'));
+    say('ok', '<b>valorTotal</b> setado no DOM: 10000.00 → 12500.00');
+    clock -= 7;
+    sbTime.textContent = '14:07:42';
+  })();
+</script>

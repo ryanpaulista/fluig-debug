@@ -66,26 +66,33 @@ ferramenta de IA (ex: Claude Code) e pedir análise do problema.
 **Valor:** transforma "coletar o estado campo a campo" em uma ação única, e
 entrega o contexto num formato que a IA entende bem.
 
-**Ampliação (implementada):** além de exportar, *olhar*. O mesmo dump tem duas
-apresentações, alternadas por botão:
-- **Tabela** (padrão) — uma linha por ocorrência crua, com nome, tags
-  (desabilitado / linha / tabela / iframe / tipo) e valor; filtro incremental
-  por **nome ou valor**; por linha, "Setar" (leva o nome cru para o CU-01 de
-  escrita, sem disparar a confirmação) e "Copiar nome".
-- **JSON** — a saída agrupada de sempre, para colar como contexto.
+**Ampliação (implementada):** além de exportar, *olhar*. A partir da v2 a mesma
+varredura tem duas apresentações, em **abas**:
+- **Campos** (padrão) — o grid: uma linha por ocorrência crua de campo simples,
+  com nome, tipo e valor **editável**; filtro incremental por **nome ou valor**;
+  tabelas pai-filho como **planilha** (ver abaixo); por linha, "setar" (abre o
+  editor inline) e "nome" (copia o `name`/`id` cru).
+- **Estado** — a saída agrupada em JSON, para colar como contexto, com
+  numeração de linha e realce.
 
 **Decisões:**
-- A tabela é uma *view* do resultado do `buildDumpExpr`, **não** uma segunda
-  varredura: alternar aba não revarre a página. Dois caminhos coletando o mesmo
-  dado divergiriam na primeira mudança de regra.
+- As duas abas são *views* do resultado do `buildDumpExpr`, **não** varreduras
+  distintas: trocar de aba não revarre a página. Dois caminhos coletando o mesmo
+  dado divergiriam na primeira mudança de regra. Na v2 esse princípio virou
+  arquitetura: o índice do autocomplete também é derivado dessa varredura, e a
+  segunda expressão que existia só para ele (`buildFieldIndexExpr`) foi removida.
 - Linha por entrada **crua**, não por campo lógico: campo espelhado em outro
-  frame e cada `___N` precisam aparecer separados para serem depuráveis. O
-  agrupamento continua sendo o papel do JSON.
+  frame precisa aparecer separado para ser depurável. O agrupamento por nome
+  lógico continua sendo papel do JSON.
 - Teto de **300 linhas** renderizadas por vez, com aviso no rodapé — mesma
   preocupação do `MAX_SUGGESTIONS` do autocomplete: formulário Fluig grande
-  passa de mil entradas e travaria o painel.
-- Só o índice numérico da linha vai para atributo HTML (`data-dump-*`): o `esc()`
-  do painel não escapa aspas, e nome de campo vem da página.
+  passa de mil entradas e travaria o painel. Teto **nunca é silencioso**: o
+  rodapé diz quantas ficaram de fora.
+- Só o índice numérico da linha vai para atributo HTML (`data-i`): o `esc()` do
+  painel não escapa aspas, e nome de campo vem da página. Onde um nome precisa
+  ir para atributo (`title`, `data-band`), passa por `escAttr()`.
+- **A varredura acontece ao abrir o painel**, sem exigir clique em "gerar dump":
+  se o grid é a tela principal, ele não pode nascer vazio.
 
 ### CU-03 — Inspecionar variáveis / dataset do Fluig
 
@@ -188,8 +195,8 @@ agrega sobre o console manual: tira a adivinhação de qual é o seletor certo.
 ### Autocomplete de nome de campo (implementado)
 
 Consequência direta do item acima: se o `name` real é instável, o desenvolvedor
-também **não sabe de cabeça o nome do campo**. Os três inputs de nome (ler,
-setar, setar no banco) sugerem os campos presentes na página conforme se digita.
+também **não sabe de cabeça o nome do campo**. O prompt de ler (na v1, os três
+inputs de nome) sugere os campos presentes na página conforme se digita.
 
 **Decidido:**
 
@@ -204,14 +211,23 @@ setar, setar no banco) sugerem os campos presentes na página conforme se digita
 - **Dropdown próprio** (não `<datalist>`): permite mostrar os mesmos badges do
   resultado do ler (desabilitado, somente leitura, tipo, tabela) e um preview do
   valor atual, além de controlar o ranking (prefixo antes de substring).
-- **Enter escolhe, não executa.** Preserva o fluxo antigo de digitar o nome
-  completo e teclar Enter para rodar a ação.
-- **Cache com TTL curto (3s)** + invalidação na navegação, porque o formulário
-  muda em runtime (linha nova na tabela filha, campo habilitado/desabilitado).
 - **Degrada em silêncio:** se a varredura falhar, o input segue aceitando o nome
   digitado à mão. A sugestão é conveniência, não pré-requisito.
 
-### Histórico por seção (implementado)
+**Revisado na v2:**
+
+- **Índice derivado, não coletado.** Some a varredura própria do autocomplete
+  (`buildFieldIndexExpr`) e com ela o cache com TTL de 3s: o índice é calculado
+  em JS a partir de `model.entries`, a mesma lista que alimenta o grid. Uma
+  varredura, uma verdade — e o autocomplete passa a mostrar exatamente o que o
+  grid mostra, que antes podia divergir por um instante.
+- **Enter escolhe *e* lê.** Na v1 o Enter só preenchia o input, porque preencher
+  e executar eram passos de seções diferentes. Com o prompt dedicado à leitura, o
+  passo seguinte óbvio depois de escolher um campo é ver o valor dele — então o
+  Enter faz os dois. **Tab** continua só completando, para quem quer escolher sem
+  disparar nada.
+
+### Histórico de ações (implementado)
 
 Complemento do CU-01: ao investigar um bug você seta um valor para testar, e
 muitas vezes precisa **voltar o valor anterior** — hoje isso dependia de você ter
@@ -219,19 +235,21 @@ anotado qual era.
 
 **Decidido:**
 
-- **Um histórico por seção de interação** (ler / setar / setar no banco), atrás de
-  um botão **Histórico (N)** na própria seção. Não há uma aba/seção global de
-  histórico.
+- **Uma lista única** (na v1 era um histórico por seção), atrás do botão
+  **histórico (N)** na command bar, com o tipo de cada ação marcado —
+  `ler` / `DOM` / `banco`. A v1 tinha três listas porque tinha três seções; com um
+  grid só, três listas seriam três lugares para procurar a mesma coisa.
 - **Efêmero, só em memória do painel:** sobrevive à navegação da página (rever o
   que foi setado antes de recarregar o formulário é justamente um dos usos) e
   morre ao fechar o DevTools. **Nada em `storage`** — mesmo princípio do dump.
-- **Restaurar preenche e abre a confirmação**, em vez de aplicar direto. A regra
-  de que toda ação que altera estado passa por confirmação continua valendo; o
-  histórico só encurta o caminho até ela.
+- **Restaurar leva o valor anterior ao mesmo caminho de escrita da ação
+  original** — editor inline para o `DOM`, faixa de confirmação para o `banco` —
+  em vez de aplicar direto. A regra de que toda ação que altera estado passa por
+  confirmação continua valendo; o histórico só encurta o caminho até ela.
 - **Registra o efeito, não a intenção:** o valor novo gravado é o *read-back*.
   Alteração cancelada ou que falhou não entra. Leitura não encontrada entra.
 - **Leitura repetida idêntica colapsa** em contador (`N×`); escrita nunca.
-- **Limite de 50 entradas** por seção.
+- **Limite de 50 entradas.**
 
 **Limitação assumida — o "anterior" do setar no banco:** o `dsSetCardValue` não
 tem leitura correspondente, então o valor anterior dessa seção é lido do **DOM** e
@@ -239,6 +257,138 @@ rotulado como `anterior (DOM)` em toda a UI. No caso principal (solicitação
 finalizada) o `<span>` contém o valor persistido, mas não há garantia. Quando não
 é possível afirmar um único valor (campo ausente, ou ocorrências espelhadas
 divergentes), a UI mostra **não disponível** e não oferece Restaurar.
+
+### Reformulação da interface (v2 — implementado)
+
+Até a v1.1 o painel era um **documento**: `<section>`s empilhadas (Solicitação,
+Ler campo, Setar campo, Setar no banco, Dump), cada uma com formulário próprio e
+um bloco de saída embaixo que empurrava o conteúdo para baixo a cada ação. Num
+painel do DevTools — largo e **curto** — isso gastava altura demais e obrigava a
+rolar para trocar de função.
+
+A v2 troca a metáfora: de documento para **cliente de dados**. A referência é
+DBeaver / DataGrip, não dashboard.
+
+**Decidido:**
+
+- **O grid é a tela principal, não um resultado.** Se todos os campos já estão
+  numa tabela editável, *ler é olhar* e *setar é digitar na célula*. As seções
+  "Ler campo" e "Setar campo" deixam de existir como formulários; o que sobra é
+  um **prompt** na command bar para o caso de saber o nome e querer o valor de
+  agora.
+- **Escrita a partir do grid não passa por resolução de ambiguidade.** A linha
+  conhece o `name`/`id` **cru**, então ela mira a ocorrência exata. O erro
+  "ambíguo: casa com N ocorrências" da v1 era consequência de digitar o nome
+  lógico — some no caminho do grid e continua valendo para o prompt.
+- **Alturas fixas e um único scroll.** Toolbar 27px, tabs 28px, barra de ação
+  29px, status bar 22px; só o miolo rola. A `<section>` com margem de 22px cede
+  lugar a hairline de 1px.
+- **Tabela pai-filho é planilha, não lista de campos.** Colunas = campos, linhas
+  = `___N`. Uma tabela com 6 campos e 5 linhas virava 30 linhas soltas no grid, e
+  a relação entre elas — que é o que se quer ver — ficava só no sufixo. Como
+  planilha, comparar a mesma coluna entre linhas volta a ser olhar para baixo.
+  Decisões dentro dela:
+  - **Ordem das colunas é a de primeira aparição no DOM**, não alfabética: é a
+    ordem em que as colunas estão no formulário, que é como o usuário as conhece.
+  - **Ordem das linhas é numérica** e a numeração do Fluig tem buracos (`1`, `3`,
+    `5`) — é exibida como está, sem renumerar. Renumerar esconderia que a linha 2
+    foi excluída.
+  - **Campo ausente naquela linha vira `—`**, não célula vazia: vazio é um valor
+    possível e não pode ser confundido com ausente.
+  - **A linha modelo** (campos sem `___N`, o molde que o Fluig mantém) entra na
+    planilha, não na lista de campos simples — mas **só quando tem algum valor**.
+    Molde vazio é o caso normal e não informa nada; pior, inflava a contagem da
+    banda ("3 linha(s)" para uma tabela de 2). Vazio, não existe: nem linha, nem
+    contagem. Os campos seguem no JSON e no autocomplete, e o `title` da banda diz
+    quantos foram omitidos — omissão silenciosa se lê como "não existe".
+  - **A contagem da banda é de linhas de DADOS.** A linha modelo, quando aparece,
+    é anunciada separada (`+ modelo`): ela não é uma linha da tabela.
+  - **Redimensionar no arraste**, como numa planilha: borda direita do cabeçalho
+    muda a largura da coluna, borda de baixo do número da linha muda a altura
+    daquela linha, duplo clique na alça volta ao automático. As alças ficam **só
+    nessas duas bordas** — uma faixa sensível na borda de qualquer célula roubaria
+    o duplo clique que abre o editor. O ajuste é guardado por tabela + nome da
+    coluna (nunca por posição), então sobrevive a filtro, colapso e revarredura; e
+    é aplicado direto no elemento durante o arraste, sem re-render.
+  - **Arrastar a primeira coluna congela todas as larguras em px.** Com as
+    vizinhas em `1fr`, encolher uma faria as outras se esticarem e a arrastada
+    pareceria não mudar de tamanho.
+  - **Coluna `___N` fixa (sticky)** ao rolar na horizontal; cada tabela rola
+    dentro do próprio bloco, então o painel nunca rola de lado.
+  - **Filtro esconde linhas, nunca colunas.** Casar o nome da tabela ou de uma
+    coluna mantém a tabela inteira — nesses casos é a tabela que interessa.
+  - **`⧉` copia a linha como JSON.** Numa tabela, o que se leva para fora quase
+    nunca é um campo isolado.
+  - **Teto de render conta célula** e corta em **linhas inteiras**: meia linha de
+    planilha não ajuda ninguém.
+- **Identificação de tabela com fallback.** Depender só de `[tablename]` não
+  serve: em formulário real ele falta com frequência, e aí as linhas de tabelas
+  diferentes caem num balaio único e se intercalam pelo número da linha (foi
+  exatamente o que apareceu no primeiro teste da v2 numa solicitação com várias
+  tabelas). A identificação desce por fallback — `[tablename]` → id do `<table>`
+  → **posição do `<table>` no documento** → container com id (tabela montada com
+  `<div>`) — e a UI **diz qual critério usou** quando não foi o `tablename`,
+  porque agrupamento torto é quase sempre falta desse atributo.
+- **Estado do campo entra na forma, não em pílula.** Faixa de 2px na borda
+  esquerda da linha: âmbar = desabilitado (`_`), cinza = `span` só-leitura,
+  violeta = `hidden`, aço = linha de tabela. Dá para varrer a coluna sem ler
+  nenhuma palavra. As tags textuais da v1 (`desabilitado (_)`, `somente leitura`,
+  `iframe`) saem da linha: tipo vira coluna própria e o resto vai para o `title`.
+- **A solicitação sai do topo e vira contexto.** Número e `documentId` ficam na
+  toolbar, sempre visíveis; o detalhe da resolução migra para a aba **Processo**.
+  Recupera altura útil e dá um lar para as funções de workflow que vêm depois.
+- **Status bar única** no lugar de um bloco de saída por seção. Marcador quadrado
+  de 6px (neutro / ok / aviso / erro) + hora tabular.
+- **Logs ganham aba própria.** Na v1 os `console.log` capturados só apareciam
+  dentro do JSON do dump. Continuam indo no JSON, mas agora dá para olhar sem
+  gerar nada, com filtro por nível e por texto.
+- **Dark-first com token único.** O painel herda o tema do DevTools via
+  `prefers-color-scheme`; o desenho é escuro por decisão e o tema claro é
+  sobrescrita de ~20 variáveis. Nenhum componente referencia cor literal.
+- **Nada de "cheiro de IA".** Raio máximo de 2px, sem cartão dentro de cartão,
+  sem pílula de fundo tingido, sem um ícone colorido por seção, sem empty state
+  centralizado com ícone gigante, tabs estreitas à esquerda com sublinhado de
+  2px. Ferramenta de dev não é landing page.
+
+**Confirmação — o que mudou e o que não:**
+
+- **`DOM`: o editor É a confirmação.** Ele mostra o valor atual ao lado do novo e
+  nada é aplicado sem clicar em `DOM` (ou Enter). Os dois valores seguem visíveis
+  antes de aplicar, que é o que a regra pedia; o passo extra em tela separada era o
+  que a v1 usava por não ter onde mostrar isso.
+- **Duas formas de editor, escolhidas pela largura da célula.** Um `<input>` de
+  uma linha numa célula de 104px não serve para um JSON de mil caracteres — na
+  prática o campo de edição ficava menor que o conteúdo e não dava para ver o que
+  se estava alterando. Então:
+  - **Cabe numa linha da célula** → editor inline, na própria célula.
+  - **Não cabe** (ou tem quebra de linha) → **editor de valor longo** ancorado
+    acima da command bar, na largura do painel, altura pelo conteúdo (teto em ~45%
+    da altura do painel, com `resize` vertical nativo para esticar).
+  - O critério é a **largura real da célula**, não um número fixo de caracteres:
+    coluna alargada no arraste passa a caber mais coisa inline.
+  - No editor longo, **Enter insere quebra de linha** e **Ctrl+Enter aplica** —
+    valor longo costuma ser multilinha, e perder a quebra ao aplicar seria pior que
+    o atalho menos óbvio.
+  - **Caret no início, sem select-all:** em valor longo o normal é mexer num
+    trecho, e selecionar tudo faria a primeira tecla apagar mil caracteres.
+  - A célula **não é esvaziada** — continua mostrando o valor atual, destacada,
+    enquanto se edita (o padrão de planilha com barra de fórmulas).
+- **`banco`: passo explícito, mantido.** `dsSetCardValue` grava fora do DOM e não
+  tem desfazer, então continua exigindo uma **faixa de confirmação** própria, em
+  âmbar, com solicitação, `documentId`, campo, atual (DOM) e novo. Âmbar é
+  reservado a essa ação em toda a UI.
+- **Nome que vai para o `dsSetCardValue`:** tira **só** o `_` de desabilitado, que
+  é artefato de DOM e nunca faz parte do nome no banco. O `___N` **fica**: o
+  dataset não tem conceito de linha, então mandar o nome cru é o mesmo que o
+  usuário digitaria — não inventamos um mapeamento que a plataforma não garante.
+  A faixa avisa quando o alvo é linha de tabela.
+
+**Removido por redundância (não por corte de escopo):**
+
+- `buildFieldIndexExpr` — o índice do autocomplete passou a ser derivado da
+  varredura do dump.
+- `buildRowExpr` + `renderRow` (o bloco "Linha completa" do ler) — a banda de
+  tabela pai-filho no grid já mostra a linha inteira, e melhor.
 
 ### Restrição de arquitetura (Manifest V3)
 

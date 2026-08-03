@@ -3,376 +3,1023 @@
   <head>
     <meta charset="utf-8" />
     <style>
+      /* =====================================================================
+         Tokens
+         =====================================================================
+         O painel do DevTools herda o tema do DevTools via prefers-color-scheme.
+         O desenho e ESCURO por decisao (a referencia sao clientes de banco tipo
+         DBeaver/DataGrip), entao o tema escuro e a BASE aqui em :root e o claro
+         e a sobrescrita. Trocar de tema e trocar variavel: nenhum componente
+         abaixo referencia cor literal.
+
+         Neutros com vies azul de proposito. Cinza puro e o que sai quando
+         ninguem escolheu. O acento (aco) aparece em tres lugares e so neles:
+         sublinhado da aba ativa, selecao de linha, foco. Cores semanticas NAO
+         sao acento: ambar e sempre escrita no banco, vermelho e sempre erro. */
       :root {
-        color-scheme: light dark;
+        color-scheme: dark;
+
+        --ink-900: #16181c;
+        --ink-850: #191c21;
+        --ink-800: #1c1f24;
+        --ink-700: #22262c;
+        --ink-600: #282d34;
+        --line: #2e343c;
+        --line-2: #383f49;
+        --text: #ccd3dc;
+        --dim: #7d8895;
+        --faint: #58616c;
+        --steel: #5b9dd9;
+        --steel-dim: #3d6a92;
+        --ok: #7bab6e;
+        --warn: #c9a250;
+        --err: #d1685f;
+        --violet: #9186c4;
+        --sel: rgba(91, 157, 217, 0.14);
+        --warn-bg: rgba(201, 162, 80, 0.1);
+        --shadow: rgba(0, 0, 0, 0.45);
+
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        --mono: ui-monospace, "JetBrains Mono", "SF Mono", SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace;
+
+        /* Uma fonte de verdade para as colunas do grid: o cabecalho e as linhas
+           usam a MESMA variavel, senao desalinham na primeira mudanca. */
+        --cols: 34px minmax(118px, 1.3fr) 86px minmax(0, 2.2fr) 96px;
       }
-      body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
-        font-size: 13px;
-        margin: 0;
-        padding: 16px;
-        line-height: 1.5;
-      }
-      h1 {
-        font-size: 15px;
-        margin: 0 0 12px 0;
-      }
-      h2 {
-        font-size: 13px;
-        margin: 0 0 2px 0;
-      }
-      .muted {
-        opacity: 0.7;
-      }
-      .ok {
-        color: #2e7d32;
-      }
-      .err {
-        color: #c62828;
-      }
-      code {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        padding: 1px 4px;
-        border-radius: 3px;
-        background: rgba(127, 127, 127, 0.18);
-      }
-      section {
-        margin-bottom: 22px;
-      }
-      .field-row {
-        display: flex;
-        gap: 8px;
-        margin: 8px 0 10px 0;
-        flex-wrap: wrap;
-      }
-      input[type="text"] {
-        font: inherit;
-        flex: 1;
-        min-width: 120px;
-        padding: 6px 8px;
-        border: 1px solid rgba(127, 127, 127, 0.5);
-        border-radius: 4px;
-        background: transparent;
-        color: inherit;
-      }
-      button {
-        font: inherit;
-        padding: 6px 14px;
-        cursor: pointer;
-      }
-      button.danger {
-        border-color: #c62828;
-        color: #c62828;
-        font-weight: 600;
-      }
-      .row {
-        display: flex;
-        gap: 8px;
-        align-items: baseline;
-        margin: 3px 0;
-        flex-wrap: wrap;
-      }
-      .k {
-        display: inline-block;
-        min-width: 72px;
-        opacity: 0.7;
-      }
-      .match {
-        border-left: 2px solid rgba(127, 127, 127, 0.35);
-        padding-left: 10px;
-        margin: 8px 0;
-      }
-      .confirm {
-        border: 1px solid rgba(255, 167, 38, 0.6);
-        background: rgba(255, 167, 38, 0.1);
-        border-radius: 6px;
-        padding: 10px 12px;
-      }
-      .tag {
-        font-size: 11px;
-        padding: 1px 6px;
-        border-radius: 8px;
-        background: rgba(127, 127, 127, 0.2);
-      }
-      .tag.warn {
-        background: rgba(255, 167, 38, 0.28);
-      }
-      .out {
-        border-top: 1px solid rgba(127, 127, 127, 0.25);
-        padding-top: 10px;
-        min-height: 8px;
-      }
-      /* Autocomplete de nome de campo -------------------------------------- */
-      /* O wrapper herda o flex que era do input (o input agora cresce dentro
-         dele) e serve de ancora para o dropdown absoluto. */
-      .ac-wrap {
-        position: relative;
-        display: flex;
-        flex: 1;
-        min-width: 120px;
-      }
-      .ac-wrap input[type="text"] {
-        min-width: 0;
-      }
-      .ac-box {
-        display: none;
-        position: absolute;
-        top: calc(100% + 2px);
-        left: 0;
-        right: 0;
-        z-index: 20;
-        max-height: 300px;
-        overflow-y: auto;
-        border: 1px solid rgba(127, 127, 127, 0.5);
-        border-radius: 4px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.18);
-        /* Fundo opaco explicito (o dropdown cobre conteudo). Um por tema,
-           porque o painel segue o tema do DevTools via prefers-color-scheme. */
-        background: #ffffff;
-      }
-      @media (prefers-color-scheme: dark) {
-        .ac-box {
-          background: #282828;
+      @media (prefers-color-scheme: light) {
+        :root {
+          color-scheme: light;
+
+          --ink-900: #e9ebee;
+          --ink-850: #f2f3f5;
+          --ink-800: #fbfbfc;
+          --ink-700: #f0f1f4;
+          --ink-600: #e7e9ed;
+          --line: #dcdfe4;
+          --line-2: #c6cbd2;
+          --text: #22262c;
+          --dim: #5f6873;
+          --faint: #8d959e;
+          --steel: #2f6da3;
+          --steel-dim: #7ba4c8;
+          --ok: #43793c;
+          --warn: #8a6416;
+          --err: #a8382e;
+          --violet: #6a5da3;
+          --sel: rgba(47, 109, 163, 0.1);
+          --warn-bg: rgba(138, 100, 22, 0.08);
+          --shadow: rgba(20, 30, 45, 0.16);
         }
       }
-      .ac-item {
-        padding: 5px 8px;
-        cursor: pointer;
-        border-bottom: 1px solid rgba(127, 127, 127, 0.15);
-      }
-      .ac-item.active {
-        background: rgba(66, 133, 244, 0.22);
-      }
-      .ac-name {
+
+      /* =====================================================================
+         Shell — alturas fixas, um unico scroll no miolo
+         ===================================================================== */
+      * { box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        margin: 0;
+        overflow: hidden;
         display: flex;
-        gap: 6px;
-        align-items: baseline;
-        flex-wrap: wrap;
+        flex-direction: column;
+        background: var(--ink-900);
+        color: var(--text);
+        font-family: var(--sans);
+        font-size: 12px;
+        line-height: 1.45;
+        -webkit-font-smoothing: antialiased;
       }
-      .ac-val {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      button { font-family: inherit; color: inherit; }
+      :focus-visible { outline: 1px solid var(--steel); outline-offset: -1px; }
+      code {
+        font-family: var(--mono);
         font-size: 11px;
-        opacity: 0.75;
-        margin-top: 2px;
+      }
+      .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+      .dim { color: var(--dim); }
+      .faint { color: var(--faint); }
+      .ok { color: var(--ok); }
+      .warn { color: var(--warn); }
+      .err { color: var(--err); }
+      .vsep { width: 1px; height: 15px; background: var(--line); flex: none; }
+      .grow { flex: 1 1 auto; }
+
+      /* --- toolbar ---------------------------------------------------------- */
+      .tb {
+        flex: none;
+        height: 27px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 8px;
+        background: var(--ink-800);
+        border-bottom: 1px solid var(--line);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11.5px;
+        font-weight: 600;
+        white-space: nowrap;
+        flex: none;
+      }
+      .brand svg { display: block; }
+      .tb-ctx {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--dim);
+        font-variant-numeric: tabular-nums;
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
+      .tb-ctx b { color: var(--text); font-weight: 500; }
+      .tb-ctx .sep { color: var(--faint); }
+
+      .ibtn {
+        flex: none;
+        height: 19px;
+        min-width: 19px;
+        padding: 0 6px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        background: transparent;
+        border: 1px solid transparent;
+        font-size: 11px;
+        color: var(--dim);
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .ibtn:hover { background: var(--ink-600); color: var(--text); border-color: var(--line); }
+      .ibtn[aria-pressed="true"] { color: var(--steel); border-color: var(--steel-dim); background: var(--sel); }
+      .ibtn[disabled] { opacity: 0.45; cursor: default; }
+      .ibtn[disabled]:hover { background: transparent; color: var(--dim); border-color: transparent; }
+
+      /* --- tabs ------------------------------------------------------------- */
+      .tabs {
+        flex: none;
+        display: flex;
+        align-items: stretch;
+        height: 28px;
+        background: var(--ink-850);
+        border-bottom: 1px solid var(--line);
+        padding-left: 2px;
+      }
+      .tab {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 12px;
+        background: transparent;
+        border: 0;
+        font-size: 11.5px;
+        color: var(--dim);
+        cursor: pointer;
+      }
+      .tab:hover { color: var(--text); }
+      .tab[aria-selected="true"] { color: var(--text); }
+      .tab[aria-selected="true"]::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: -1px;
+        height: 2px;
+        background: var(--steel);
+      }
+      .tab .count {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--faint);
+        font-variant-numeric: tabular-nums;
+      }
+      .tab[aria-selected="true"] .count { color: var(--dim); }
+
+      .panes { flex: 1 1 auto; min-height: 0; display: flex; }
+      .pane { flex: 1 1 auto; min-width: 0; display: none; flex-direction: column; }
+      .pane[data-on] { display: flex; }
+
+      /* --- barra de acao/filtro -------------------------------------------- */
+      .abar {
+        flex: none;
+        min-height: 29px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 8px;
+        background: var(--ink-800);
+        border-bottom: 1px solid var(--line);
+      }
+      .fld {
+        height: 20px;
+        background: var(--ink-900);
+        border: 1px solid var(--line-2);
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 11px;
+        padding: 0 6px;
+        min-width: 0;
+      }
+      .fld::placeholder { color: var(--faint); }
+      .fld:focus { outline: 0; border-color: var(--steel); }
+      .abar .fld { flex: 1 1 auto; max-width: 320px; }
+      .meta {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        color: var(--faint);
+        white-space: nowrap;
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* --- data grid -------------------------------------------------------- */
+      .grid {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        background: var(--ink-800);
+        /* Altura da linha = quantas linhas de texto a célula mostra antes de
+           cortar. Controlada pela barra de ação; vale para o grid plano e para as
+           planilhas de uma vez, sem re-render. */
+        --clamp: 2;
+      }
+      .gr {
+        display: grid;
+        grid-template-columns: var(--cols);
+        border-bottom: 1px solid var(--line);
+        border-left: 2px solid transparent;
+      }
+      .gr > * {
+        padding: 4px 8px;
+        min-width: 0;
+        border-right: 1px solid var(--line);
+        overflow: hidden;
+      }
+      .gr > *:last-child { border-right: 0; }
+      .gh {
+        position: sticky;
+        top: 0;
+        z-index: 3;
+        background: var(--ink-700);
+        border-bottom: 1px solid var(--line-2);
+      }
+      .gh > * {
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--dim);
+        padding-top: 5px;
+        padding-bottom: 5px;
+        user-select: none;
+      }
+      #grid-body .gr:hover { background: var(--ink-850); }
+      #grid-body .gr.on { background: var(--sel); border-left-color: var(--steel); }
+      .c-n {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--faint);
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        user-select: none;
+      }
+      .c-name {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        overflow-wrap: anywhere;
+      }
+      .c-name .pre { color: var(--faint); }
+      .c-type { font-family: var(--mono); font-size: 10.5px; color: var(--dim); white-space: nowrap; }
+      .c-val {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        /* Valor longo (JSON num hidden, texto de parecer) nao pode esticar a
+           linha indefinidamente: corta em 2 linhas COM reticencias, para o corte
+           ficar visivel. O valor inteiro continua na aba Estado. */
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: var(--clamp);
+        overflow: hidden;
+        overflow-wrap: anywhere;
+        font-variant-numeric: tabular-nums;
+        cursor: text;
+      }
+      /* Em edicao a celula volta a ser bloco: o -webkit-box acima quebraria o
+         flex do editor inline. */
+      .c-val.editing { display: block; overflow: visible; -webkit-line-clamp: none; cursor: default; }
+      .c-val .q { color: var(--faint); }
+      .c-acts { display: flex; gap: 2px; justify-content: flex-end; opacity: 0; }
+      .gr:hover .c-acts,
+      .gr.on .c-acts,
+      .gr:focus-within .c-acts { opacity: 1; }
+      .abtn {
+        height: 17px;
+        padding: 0 5px;
+        background: transparent;
+        border: 1px solid var(--line-2);
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--dim);
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      .abtn:hover { color: var(--text); background: var(--ink-600); border-color: var(--steel-dim); }
+      .abtn.db:hover { color: var(--warn); border-color: var(--warn); }
+
+      /* Estado do campo entra na FORMA, nao em pilula: faixa de 2px na borda
+         esquerda. Da para varrer a coluna sem ler nenhuma palavra. Sem escopo em
+         .gr porque a mesma marca serve para a celula de planilha (.sh-c). */
+      .st-off { border-left-color: var(--warn); }
+      .st-ro { border-left-color: var(--line-2); }
+      .st-hid { border-left-color: var(--violet); }
+      .gr.st-off .c-type { color: var(--warn); }
+      .gr.st-ro .c-type { color: var(--faint); }
+      .gr.st-hid .c-type { color: var(--violet); }
+
+      /* banda de tabela pai-filho */
+      .band {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        width: 100%;
+        padding: 3px 8px 3px 6px;
+        background: var(--ink-700);
+        border: 0;
+        border-bottom: 1px solid var(--line);
+        border-left: 2px solid var(--steel-dim);
+        font-family: var(--mono);
+        font-size: 10.5px;
+        color: var(--dim);
+        text-align: left;
+        cursor: pointer;
+        user-select: none;
+      }
+      .band:hover { background: var(--ink-600); }
+      .band .tw { color: var(--faint); width: 8px; flex: none; }
+      .band b { color: var(--text); font-weight: 500; }
+      /* Por que a tabela foi agrupada daquele jeito. Só aparece quando NÃO foi
+         pelo tablename — agrupamento torto é quase sempre isso. */
+      .band .how { color: var(--warn); }
+
+      /* --- planilha de tabela pai-filho ------------------------------------- */
+      /* Colunas = campos, linhas = ___N. Rola na horizontal DENTRO do bloco:
+         cada tabela tem sua própria largura e o painel nunca rola de lado. */
+      .sheet {
+        overflow-x: auto;
+        background: var(--ink-800);
+        border-bottom: 1px solid var(--line);
+      }
+      .sh-row {
+        display: grid;
+        grid-template-columns: var(--shcols);
+        border-bottom: 1px solid var(--line);
+      }
+      .sh-row:last-child { border-bottom: 0; }
+      .sh-row > * {
+        padding: 4px 8px;
+        min-width: 0;
+        border-right: 1px solid var(--line);
+      }
+      .sh-row > *:last-child { border-right: 0; }
+      .sh-h { background: var(--ink-700); border-bottom: 1px solid var(--line-2); }
+      .sh-hc {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        color: var(--text);
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        overflow-wrap: anywhere;
+      }
+      .sh-hc .ty { color: var(--faint); font-size: 9.5px; }
+      /* Número da linha fica colado à esquerda quando a planilha rola: sem isso
+         você perde a referência de qual linha está lendo. */
+      .sh-rh {
+        position: sticky;
+        left: 0;
+        z-index: 2;
+        background: var(--ink-700);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 4px;
+        font-family: var(--mono);
+        font-size: 10.5px;
+        color: var(--dim);
+        font-variant-numeric: tabular-nums;
+        user-select: none;
+        border-right: 1px solid var(--line-2);
+      }
+      .sh-h .sh-rh { color: var(--faint); letter-spacing: 0.06em; }
+      .sh-copy {
+        flex: none;
+        width: 13px;
+        height: 15px;
+        padding: 0;
+        background: transparent;
+        border: 0;
+        color: var(--faint);
+        font-size: 10px;
+        cursor: pointer;
+        opacity: 0;
+      }
+      .sh-row:hover .sh-copy, .sh-copy:focus-visible { opacity: 1; }
+      .sh-copy:hover { color: var(--steel); }
+      .sh-c {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        border-left: 2px solid transparent;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: var(--clamp);
+        overflow: hidden;
+        overflow-wrap: anywhere;
+        font-variant-numeric: tabular-nums;
+        cursor: text;
+      }
+      .sh-c.editing { display: block; overflow: visible; -webkit-line-clamp: none; cursor: default; }
+      .sh-c .q { color: var(--faint); }
+      .sheet .sh-row:hover { background: var(--ink-850); }
+      .sheet .sh-row:hover .sh-rh { background: var(--ink-600); }
+      .sh-c.on { background: var(--sel); border-left-color: var(--steel); }
+      /* Campo que existe em outras linhas mas não nesta: buraco explícito. Vazio
+         é um valor possível e não pode ser confundido com ausente. */
+      .sh-null { color: var(--faint); cursor: default; }
+      /* Linha modelo da tabela (campos sem ___N). Fica antes da linha 1 e mais
+         apagada: é molde, não dado. */
+      .sh-row.sh-tpl { background: var(--ink-850); }
+      .sh-row.sh-tpl .sh-rh { color: var(--faint); font-style: italic; }
+      .sh-row.sh-tpl .sh-c { color: var(--dim); }
+
+      /* altura "tudo": a célula cresce com o valor, sem reticências */
+      .grid[data-clamp="0"] .c-val,
+      .grid[data-clamp="0"] .sh-c {
+        display: block;
+        -webkit-line-clamp: unset;
+        overflow: visible;
+        white-space: pre-wrap;
+      }
+      /* Com linha alta o número da linha alinha com a PRIMEIRA linha do texto,
+         não no meio de uma célula de 5 linhas. */
+      .sh-rh { align-items: flex-start; }
+
+      /* --- alças de redimensionamento --------------------------------------- */
+      /* Como numa planilha: borda direita do cabeçalho muda a largura da coluna,
+         borda de baixo do número da linha muda a altura da linha. Ficam só nessas
+         duas bordas — uma faixa sensível no meio da grade roubaria o duplo clique
+         que abre o editor. */
+      .sh-hc, .sh-rh { position: relative; }
+      .sh-grip-x,
+      .sh-grip-y {
+        position: absolute;
+        z-index: 3;
+        background: transparent;
+      }
+      .sh-grip-x {
+        top: 0;
+        bottom: 0;
+        right: -3px;
+        width: 6px;
+        cursor: col-resize;
+      }
+      .sh-grip-y {
+        left: 0;
+        right: -3px;
+        bottom: -3px;
+        height: 6px;
+        cursor: row-resize;
+      }
+      /* Só sinaliza no hover da própria célula: pista de que dá para arrastar,
+         sem virar mais uma linha permanente na grade. */
+      .sh-hc:hover .sh-grip-x,
+      .sh-rh:hover .sh-grip-y { background: var(--steel-dim); }
+      .sh-grip-x:hover,
+      .sh-grip-y:hover { background: var(--steel); }
+
+      /* Linha com altura fixada no arraste: o corte passa a ser a caixa da linha,
+         não o clamp global — é isso que faz o texto aparecer conforme se arrasta. */
+      .sh-row.sh-fixed .sh-c {
+        display: block;
+        -webkit-line-clamp: unset;
+        overflow: hidden;
+        white-space: pre-wrap;
+      }
+      /* Em edição a célula tem de escapar do corte da linha, senão os botões
+         DOM/banco ficam cortados numa coluna estreita. (A altura fixa da linha é
+         solta pelo JS enquanto edita, e devolvida ao fechar.) */
+      .sh-row.sh-fixed .sh-c.editing { overflow: visible; }
+
+      /* Durante o arraste o cursor não pode piscar ao passar por cima de texto,
+         e nada pode ser selecionado por acidente. */
+      body[data-dragging] { user-select: none; }
+      body[data-dragging="col"], body[data-dragging="col"] * { cursor: col-resize !important; }
+      body[data-dragging="row"], body[data-dragging="row"] * { cursor: row-resize !important; }
+
+      .gfoot {
+        padding: 6px 9px;
+        font-family: var(--mono);
+        font-size: 10.5px;
+        color: var(--faint);
+        border-bottom: 1px solid var(--line);
+      }
+      .gempty {
+        padding: 14px 10px;
+        font-size: 11.5px;
+        color: var(--faint);
+      }
+      .gempty b { color: var(--dim); font-weight: 500; }
+
+      /* --- editor inline ---------------------------------------------------- */
+      .ed { display: flex; align-items: center; gap: 4px; }
+      .ed .fld { flex: 1 1 auto; height: 19px; }
+      .ed .was {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--faint);
+        white-space: nowrap;
+        text-decoration: line-through;
+        flex: none;
+      }
+      .pbtn {
+        height: 19px;
+        padding: 0 7px;
+        background: var(--ink-600);
+        border: 1px solid var(--steel-dim);
+        font-size: 10.5px;
+        color: var(--text);
+        cursor: pointer;
+        white-space: nowrap;
+        flex: none;
+      }
+      .pbtn:hover { border-color: var(--steel); background: var(--sel); }
+      .pbtn.warn { border-color: color-mix(in srgb, var(--warn) 55%, transparent); color: var(--text); }
+      .pbtn.warn:hover { border-color: var(--warn); color: var(--warn); background: var(--warn-bg); }
+      .pbtn.ghost { background: transparent; border-color: var(--line-2); color: var(--dim); }
+      .pbtn.ghost:hover { color: var(--text); border-color: var(--line-2); background: var(--ink-600); }
+
+      /* --- editor de valor longo -------------------------------------------- */
+      /* Ancorado acima da command bar, não flutuando sobre a grade: nada de
+         cálculo de posição, nada de clipping pelo scroll horizontal da planilha,
+         e a célula continua visível e destacada enquanto se edita. */
+      .veditor {
+        flex: none;
+        display: none;
+        flex-direction: column;
+        background: var(--ink-850);
+        border-top: 1px solid var(--steel-dim);
+      }
+      .veditor[data-on] { display: flex; }
+      .ve-head {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 8px;
+        border-bottom: 1px solid var(--line);
+      }
+      .ve-name {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--text);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 40%;
+      }
+      .ve-meta {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        color: var(--faint);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
       }
-      .ac-empty,
-      .ac-foot {
-        padding: 5px 8px;
-        font-size: 11px;
-      }
-      .ac-foot {
-        position: sticky;
-        bottom: 0;
-        background: inherit;
-        border-top: 1px solid rgba(127, 127, 127, 0.25);
-      }
-
-      /* Historico por secao ------------------------------------------------- */
-      .hist {
-        display: none;
-        margin-top: 10px;
-        border: 1px solid rgba(127, 127, 127, 0.35);
-        border-radius: 6px;
-        padding: 8px 10px;
-      }
-      .hist-head {
-        display: flex;
-        gap: 8px;
-        align-items: baseline;
-        justify-content: space-between;
-        margin-bottom: 4px;
-      }
-      .hist-item {
-        border-top: 1px solid rgba(127, 127, 127, 0.2);
-        padding: 6px 0 4px 0;
-      }
-      .hist-item:first-of-type {
-        border-top: none;
-      }
-      .hist-time {
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        font-size: 11px;
-        opacity: 0.65;
-      }
-      .hist button {
-        padding: 2px 8px;
-        font-size: 11px;
-      }
-
-      /* Dump — visao em tabela ---------------------------------------------- */
-      button.active {
-        border-color: rgba(66, 133, 244, 0.9);
-        background: rgba(66, 133, 244, 0.18);
-        font-weight: 600;
-      }
-      .dump-row {
-        display: flex;
-        gap: 10px;
-        align-items: baseline;
-        border-top: 1px solid rgba(127, 127, 127, 0.2);
-        padding: 5px 0;
-      }
-      .dump-row:first-child {
-        border-top: none;
-      }
-      .dump-name {
-        flex: 0 0 32%;
-        min-width: 0;
-        overflow-wrap: anywhere;
-      }
-      .dump-tags {
-        display: flex;
-        gap: 4px;
-        flex-wrap: wrap;
-        margin-top: 2px;
-      }
-      .dump-val {
-        flex: 1 1 auto;
-        min-width: 0;
-        /* Valor longo (JSON num hidden, texto de parecer) nao pode esticar a
-           linha indefinidamente. Corta em 3 linhas COM reticencias, para o corte
-           ficar visivel — o valor inteiro continua na aba JSON. */
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: 3;
-        overflow: hidden;
-        overflow-wrap: anywhere;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        font-size: 12px;
-      }
-      .dump-acts {
-        flex: 0 0 auto;
-        display: flex;
-        gap: 4px;
-      }
-      .dump-acts button {
-        padding: 2px 8px;
-        font-size: 11px;
-      }
-      .dump-foot {
-        border-top: 1px solid rgba(127, 127, 127, 0.25);
-        margin-top: 6px;
-        padding-top: 6px;
-        font-size: 11px;
-      }
-
-      textarea {
+      .ve-text {
         width: 100%;
         box-sizing: border-box;
-        min-height: 220px;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-        font-size: 12px;
-        padding: 8px;
-        border: 1px solid rgba(127, 127, 127, 0.5);
-        border-radius: 4px;
-        background: transparent;
-        color: inherit;
+        /* resize vertical nativo: o usuário estica o editor sem código nenhum. */
         resize: vertical;
+        min-height: 64px;
+        margin: 0;
+        padding: 6px 8px;
+        background: var(--ink-900);
+        border: 0;
+        border-top: 1px solid transparent;
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 11.5px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+        overflow: auto;
+        outline: 0;
+      }
+      .ve-text:focus { border-top-color: var(--steel); }
+
+      /* --- faixa de confirmacao (gravacao no banco) ------------------------- */
+      /* O editor inline JA e a confirmacao do set no DOM (mostra atual -> novo
+         antes de aplicar). Gravar no banco nao tem desfazer, entao ganha um
+         passo explicito proprio, em ambar. */
+      .confirm {
+        flex: none;
+        display: none;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        padding: 6px 8px;
+        background: var(--warn-bg);
+        border-top: 1px solid var(--warn);
+        font-size: 11.5px;
+      }
+      .confirm[data-on] { display: flex; }
+      .confirm .cf-t { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--warn); white-space: nowrap; }
+      .confirm .cf-rows { display: flex; flex-wrap: wrap; gap: 3px 12px; min-width: 0; flex: 1 1 auto; }
+      .confirm .cf-i { display: flex; gap: 5px; align-items: baseline; min-width: 0; }
+      .confirm .cf-i span { color: var(--dim); font-size: 10.5px; white-space: nowrap; }
+      .confirm .cf-i code { overflow-wrap: anywhere; }
+
+      /* --- command bar ------------------------------------------------------ */
+      .cbar {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 30px;
+        padding: 0 8px;
+        background: var(--ink-800);
+        border-top: 1px solid var(--line-2);
+        position: relative;
+      }
+      .prompt {
+        flex: 1 1 auto;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        height: 21px;
+        background: var(--ink-900);
+        border: 1px solid var(--line-2);
+        padding: 0 6px;
+        min-width: 0;
+      }
+      .prompt:focus-within { border-color: var(--steel); }
+      .prompt .caret { color: var(--steel); font-family: var(--mono); font-size: 11px; user-select: none; flex: none; }
+      .prompt input {
+        flex: 1 1 auto;
+        min-width: 0;
+        background: transparent;
+        border: 0;
+        outline: 0;
+        color: var(--text);
+        font-family: var(--mono);
+        font-size: 11px;
+        padding: 0;
+      }
+      .prompt input::placeholder { color: var(--faint); }
+
+      /* --- popovers (autocomplete e historico), abrem para CIMA ------------- */
+      .pop {
+        display: none;
+        position: absolute;
+        bottom: 33px;
+        max-height: 226px;
+        overflow: auto;
+        background: var(--ink-700);
+        border: 1px solid var(--line-2);
+        box-shadow: 0 -8px 22px var(--shadow);
+        z-index: 20;
+      }
+      .pop[data-on] { display: block; }
+      #cmd-ac { left: 8px; width: min(460px, calc(100% - 16px)); }
+      #history-pop { right: 8px; width: min(520px, calc(100% - 16px)); }
+      .pop-h {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 8px;
+        font-size: 10px;
+        letter-spacing: 0.07em;
+        text-transform: uppercase;
+        color: var(--faint);
+        border-bottom: 1px solid var(--line);
+        position: sticky;
+        top: 0;
+        background: var(--ink-700);
+        z-index: 1;
+      }
+      .pop-f {
+        padding: 4px 8px;
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--faint);
+        border-top: 1px solid var(--line);
+        position: sticky;
+        bottom: 0;
+        background: var(--ink-700);
+      }
+      .ac-i {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        align-items: baseline;
+        padding: 3px 8px;
+        font-family: var(--mono);
+        font-size: 11px;
+        cursor: pointer;
+        border-left: 2px solid transparent;
+      }
+      .ac-i .nm { overflow-wrap: anywhere; }
+      .ac-i .nm em { font-style: normal; color: var(--steel); }
+      .ac-i .vl {
+        color: var(--faint);
+        font-size: 10.5px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 190px;
+      }
+      .ac-i.on { background: var(--sel); border-left-color: var(--steel); }
+      .ac-i.off .nm { color: var(--warn); }
+
+      /* historico */
+      .hi {
+        display: grid;
+        grid-template-columns: 56px 40px 1fr auto;
+        gap: 8px;
+        align-items: baseline;
+        padding: 4px 8px;
+        border-bottom: 1px solid var(--line);
+        font-family: var(--mono);
+        font-size: 11px;
+      }
+      .hi:last-of-type { border-bottom: 0; }
+      .hi .ts { color: var(--faint); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+      .hi .kd { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--dim); }
+      .hi.k-set .kd { color: var(--steel); }
+      .hi.k-dbset .kd { color: var(--warn); }
+      .hi .bd { min-width: 0; overflow-wrap: anywhere; }
+      .hi .bd .arrow { color: var(--faint); }
+      .hi .bd .rep { color: var(--faint); }
+
+      /* --- status bar ------------------------------------------------------- */
+      .sbar {
+        flex: none;
+        height: 22px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 8px;
+        background: var(--ink-700);
+        border-top: 1px solid var(--line);
+        font-family: var(--mono);
+        font-size: 10.5px;
+        color: var(--dim);
+        font-variant-numeric: tabular-nums;
+      }
+      .sbar .mk { width: 6px; height: 6px; flex: none; background: var(--faint); }
+      .sbar .mk.ok { background: var(--ok); }
+      .sbar .mk.warn { background: var(--warn); }
+      .sbar .mk.err { background: var(--err); }
+      .sbar .mk.busy { background: var(--steel); }
+      .sbar .msg { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+      .sbar .msg b { color: var(--text); font-weight: 500; }
+      .sbar .msg code { font-size: 10.5px; }
+
+      /* --- aba Estado (JSON) ------------------------------------------------ */
+      .json {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        background: var(--ink-800);
+        display: grid;
+        grid-template-columns: 40px 1fr;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        line-height: 1.6;
+      }
+      .json .ln {
+        text-align: right;
+        padding: 6px 7px 6px 0;
+        margin: 0;
+        color: var(--faint);
+        background: var(--ink-850);
+        border-right: 1px solid var(--line);
+        user-select: none;
+        font-size: 10.5px;
         white-space: pre;
+        font-variant-numeric: tabular-nums;
+      }
+      .json .code { padding: 6px 10px; margin: 0; white-space: pre; }
+      .json .jk { color: var(--steel); }
+      .json .js { color: var(--ok); }
+      .json .jn { color: var(--violet); }
+
+      /* --- aba Logs --------------------------------------------------------- */
+      .logs { flex: 1 1 auto; min-height: 0; overflow: auto; background: var(--ink-800); }
+      .lg {
+        display: grid;
+        grid-template-columns: 34px 62px 1fr;
+        border-bottom: 1px solid var(--line);
+        border-left: 2px solid transparent;
+        font-family: var(--mono);
+        font-size: 11.5px;
+      }
+      .lg:hover { background: var(--ink-850); }
+      .lg > * { padding: 4px 8px; min-width: 0; }
+      .lg .lv { font-size: 10px; color: var(--faint); text-align: center; letter-spacing: 0.05em; }
+      .lg .ts { color: var(--faint); font-size: 10.5px; font-variant-numeric: tabular-nums; }
+      .lg .tx { overflow-wrap: anywhere; white-space: pre-wrap; }
+      .lg.l-error { border-left-color: var(--err); }
+      .lg.l-error .lv, .lg.l-error .tx { color: var(--err); }
+      .lg.l-warn { border-left-color: var(--warn); }
+      .lg.l-warn .lv, .lg.l-warn .tx { color: var(--warn); }
+      .lg .frm { color: var(--faint); }
+
+      /* --- aba Processo ----------------------------------------------------- */
+      .props { flex: 1 1 auto; min-height: 0; overflow: auto; background: var(--ink-800); }
+      .pr {
+        display: grid;
+        grid-template-columns: minmax(140px, 200px) 1fr;
+        border-bottom: 1px solid var(--line);
+        margin: 0;
+      }
+      .pr > * { padding: 5px 9px; min-width: 0; margin: 0; }
+      .pr dt { color: var(--dim); font-size: 11.5px; border-right: 1px solid var(--line); background: var(--ink-850); }
+      .pr dd {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        overflow-wrap: anywhere;
+        font-variant-numeric: tabular-nums;
+      }
+      .pgroup {
+        padding: 5px 9px;
+        background: var(--ink-700);
+        border-bottom: 1px solid var(--line);
+        font-size: 10px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--dim);
+      }
+      .todo { padding: 8px 9px; font-size: 11.5px; color: var(--faint); border-bottom: 1px solid var(--line); }
+      .todo b { color: var(--dim); font-weight: 500; }
+
+      @media (prefers-reduced-motion: reduce) {
+        * { transition: none !important; animation: none !important; }
       }
     </style>
   </head>
   <body>
-    <h1>Fluig Debug</h1>
-
-    <section>
-      <h2>Solicitação</h2>
-      <div class="field-row">
-        <button id="btn-reload-solicitacao" type="button">Recarregar</button>
-        <span id="solicitacao-status" class="muted"></span>
+    <!-- ================= toolbar ================= -->
+    <div class="tb">
+      <div class="brand">
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+          <rect x="0.5" y="0.5" width="11" height="11" fill="none" stroke="currentColor" opacity="0.75"></rect>
+          <rect x="3" y="3" width="6" height="2" fill="currentColor"></rect>
+          <rect x="3" y="7" width="4" height="2" fill="currentColor"></rect>
+        </svg>
+        fluig debug
       </div>
-      <div id="solicitacao-output" class="out"></div>
-    </section>
+      <div class="vsep"></div>
+      <div class="tb-ctx" id="tb-ctx" title="Solicitação e documentId resolvidos a partir da URL">
+        <span class="faint">resolvendo a solicitação…</span>
+      </div>
+      <div class="grow"></div>
+      <button class="ibtn" type="button" id="btn-rescan" title="Varrer a página de novo (campos + logs)">↻ revarrer</button>
+    </div>
 
-    <section>
-      <h2>Ler campo</h2>
-      <p class="muted">
-        Lê o valor pelo nome. Trata campo desabilitado (<code>_</code>) e linhas
-        de tabela pai-filho (<code>___N</code>). Comece a digitar (ou tecle
-        <code>↓</code>) para ver os campos da página; digite <code>___</code>
-        para escolher a linha da tabela.
-      </p>
-      <div class="field-row">
-        <div class="ac-wrap">
-          <input id="read-field" type="text" placeholder="nome do campo (ex: empresa)" autocomplete="off" />
-          <div id="read-field-ac" class="ac-box"></div>
+    <!-- ================= tabs ================= -->
+    <div class="tabs" role="tablist">
+      <button class="tab" type="button" role="tab" data-tab="campos" aria-selected="true" aria-controls="pane-campos">
+        Campos <span class="count" id="tab-count-campos"></span>
+      </button>
+      <button class="tab" type="button" role="tab" data-tab="estado" aria-selected="false" aria-controls="pane-estado">
+        Estado
+      </button>
+      <button class="tab" type="button" role="tab" data-tab="logs" aria-selected="false" aria-controls="pane-logs">
+        Logs <span class="count" id="tab-count-logs"></span>
+      </button>
+      <button class="tab" type="button" role="tab" data-tab="processo" aria-selected="false" aria-controls="pane-processo">
+        Processo
+      </button>
+    </div>
+
+    <div class="panes">
+      <!-- ================= CAMPOS ================= -->
+      <div class="pane" id="pane-campos" role="tabpanel" data-pane="campos" data-on>
+        <div class="abar">
+          <input class="fld" id="grid-filter" type="text" placeholder="filtrar por nome ou valor" autocomplete="off" aria-label="filtrar campos" />
+          <span class="meta" id="grid-count"></span>
+          <div class="grow"></div>
+          <span class="meta" id="grid-meta"></span>
+          <div class="vsep"></div>
+          <span class="meta">altura</span>
+          <button class="ibtn" type="button" data-clamp="1" title="Uma linha por célula">1</button>
+          <button class="ibtn" type="button" data-clamp="2" aria-pressed="true" title="Duas linhas por célula">2</button>
+          <button class="ibtn" type="button" data-clamp="5" title="Cinco linhas por célula">5</button>
+          <button class="ibtn" type="button" data-clamp="0" title="Sem corte — a célula cresce com o valor">tudo</button>
+          <div class="vsep"></div>
+          <button class="ibtn" type="button" id="btn-grid-copy" title="Copiar o dump JSON completo">copiar json</button>
         </div>
-        <button id="btn-read" type="button">Ler</button>
-        <button id="btn-read-history" type="button">Histórico</button>
-      </div>
-      <div id="read-output" class="out"></div>
-      <div id="read-history" class="hist"></div>
-    </section>
 
-    <section>
-      <h2>Setar campo</h2>
-      <p class="muted">
-        Altera o valor via <code>$(campo).val(valor)</code>. Mostra uma
-        confirmação (campo + valor atual → novo) antes de aplicar.
-      </p>
-      <div class="field-row">
-        <div class="ac-wrap">
-          <input id="set-field" type="text" placeholder="nome do campo" autocomplete="off" />
-          <div id="set-field-ac" class="ac-box"></div>
+        <div class="grid" id="grid">
+          <div class="gr gh" id="grid-head" role="row">
+            <div class="c-n">#</div>
+            <div>campo</div>
+            <div>tipo</div>
+            <div>valor</div>
+            <div></div>
+          </div>
+          <div id="grid-body"></div>
         </div>
-        <input id="set-value" type="text" placeholder="novo valor" />
-        <button id="btn-set" type="button">Setar</button>
-        <button id="btn-set-history" type="button">Histórico</button>
-      </div>
-      <div id="set-output" class="out"></div>
-      <div id="set-history" class="hist"></div>
-    </section>
 
-    <section>
-      <h2>Setar campo no banco</h2>
-      <p class="muted">
-        Grava o valor <strong>direto no banco</strong> (dataset
-        <code>dsSetCardValue</code>) usando o <code>documentId</code> da
-        solicitação — não mexe no DOM. Use quando o
-        <code>$(campo).val()</code> não resolve (ex.: solicitação finalizada).
-        Mostra confirmação antes de aplicar.
-      </p>
-      <div class="field-row">
-        <div class="ac-wrap">
-          <input id="dbset-field" type="text" placeholder="nome do campo" autocomplete="off" />
-          <div id="dbset-field-ac" class="ac-box"></div>
+        <!-- Editor de valor longo. Um <input> de uma linha dentro de uma célula
+             de 104px não serve para um JSON de mil caracteres: aqui o valor
+             aparece inteiro, na largura do painel, e dá para clicar direto no
+             trecho que se quer mexer. -->
+        <div class="veditor" id="veditor">
+          <div class="ve-head">
+            <span class="ve-name" id="ve-name"></span>
+            <span class="ve-meta" id="ve-meta"></span>
+            <div class="grow"></div>
+            <button class="pbtn" type="button" id="btn-ve-dom">DOM</button>
+            <button class="pbtn warn" type="button" id="btn-ve-db">banco</button>
+            <button class="pbtn ghost" type="button" id="btn-ve-cancel">cancelar</button>
+          </div>
+          <textarea class="ve-text" id="ve-text" spellcheck="false" wrap="soft"></textarea>
         </div>
-        <input id="dbset-value" type="text" placeholder="novo valor" />
-        <button id="btn-dbset" type="button">Setar no banco</button>
-        <button id="btn-dbset-history" type="button">Histórico</button>
-      </div>
-      <div id="dbset-output" class="out"></div>
-      <div id="dbset-history" class="hist"></div>
-    </section>
 
-    <section>
-      <h2>Dump do estado</h2>
-      <p class="muted">
-        Coleta de uma vez todos os campos e valores da página. Em
-        <strong>Tabela</strong>, campo a campo, com filtro e atalho para setar;
-        em <strong>JSON</strong>, o mesmo dump agrupado (tabelas pai-filho por
-        <code>___N</code>) mais os <code>console.log</code>/erros capturados
-        desde que o DevTools foi aberto — pronto para colar como contexto em
-        uma IA.
-      </p>
-      <div class="field-row">
-        <button id="btn-dump" type="button">Gerar dump</button>
-        <button id="btn-dump-table" type="button">Tabela</button>
-        <button id="btn-dump-json" type="button">JSON</button>
-        <button id="btn-copy-dump" type="button">Copiar JSON</button>
-        <span id="dump-status" class="muted"></span>
-      </div>
-      <div id="dump-table-view">
-        <div class="field-row">
-          <input id="dump-filter" type="text" placeholder="filtrar por nome ou valor" autocomplete="off" />
+        <div class="confirm" id="confirm-bar">
+          <div class="cf-t">
+            <span aria-hidden="true">▲</span>
+            <span id="confirm-title">Gravar no banco</span>
+          </div>
+          <div class="cf-rows" id="confirm-rows"></div>
+          <button class="pbtn warn" type="button" id="btn-confirm-yes">Confirmar gravação</button>
+          <button class="pbtn ghost" type="button" id="btn-confirm-no">Cancelar</button>
         </div>
-        <div id="dump-table" class="out"></div>
+
+        <div class="cbar">
+          <div class="pop" id="cmd-ac"></div>
+          <div class="pop" id="history-pop"></div>
+          <div class="prompt">
+            <span class="caret" aria-hidden="true">›</span>
+            <input id="cmd-input" type="text" placeholder="nome do campo — Enter lê da página e localiza no grid" autocomplete="off" aria-label="ler campo pelo nome" />
+          </div>
+          <button class="pbtn ghost" type="button" id="btn-cmd-read">ler</button>
+          <button class="pbtn ghost" type="button" id="btn-history">histórico</button>
+        </div>
+
+        <div class="sbar">
+          <span class="mk" id="sb-mark"></span>
+          <span class="msg" id="sb-msg">Varrendo a página…</span>
+          <span id="sb-info"></span>
+          <span class="vsep"></span>
+          <span id="sb-time"></span>
+        </div>
       </div>
-      <textarea id="dump-json" readonly placeholder="O JSON aparece aqui após 'Gerar dump'."></textarea>
-    </section>
+
+      <!-- ================= ESTADO ================= -->
+      <div class="pane" id="pane-estado" role="tabpanel" data-pane="estado">
+        <div class="abar">
+          <span class="meta" id="json-meta">nada varrido ainda</span>
+          <div class="grow"></div>
+          <button class="ibtn" type="button" id="btn-json-copy">copiar</button>
+          <button class="ibtn" type="button" id="btn-json-save">salvar .json</button>
+        </div>
+        <div class="json">
+          <pre class="ln" id="json-gutter"></pre>
+          <pre class="code" id="json-code"></pre>
+        </div>
+      </div>
+
+      <!-- ================= LOGS ================= -->
+      <div class="pane" id="pane-logs" role="tabpanel" data-pane="logs">
+        <div class="abar">
+          <input class="fld" id="logs-filter" type="text" placeholder="filtrar mensagens" autocomplete="off" aria-label="filtrar logs" />
+          <div class="vsep"></div>
+          <button class="ibtn" type="button" data-log-level="all" aria-pressed="true">tudo</button>
+          <button class="ibtn" type="button" data-log-level="error">erros <span class="mono" id="log-n-error">0</span></button>
+          <button class="ibtn" type="button" data-log-level="warn">avisos <span class="mono" id="log-n-warn">0</span></button>
+          <div class="grow"></div>
+          <span class="meta" id="logs-meta"></span>
+        </div>
+        <div class="logs" id="logs-body"></div>
+      </div>
+
+      <!-- ================= PROCESSO ================= -->
+      <div class="pane" id="pane-processo" role="tabpanel" data-pane="processo">
+        <div class="abar">
+          <span class="meta">resolvido da URL · workflowProcess → cardDocumentId</span>
+          <div class="grow"></div>
+          <button class="ibtn" type="button" id="btn-proc-reload">↻ resolver de novo</button>
+        </div>
+        <div class="props" id="props-body"></div>
+      </div>
+    </div>
 
     <script src="panel.js"></script>
   </body>

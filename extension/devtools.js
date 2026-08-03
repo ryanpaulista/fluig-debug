@@ -47,7 +47,10 @@ var LOG_HOOK_EXPR = [
   '    try {',
   '      if (w.__FLUIG_DEBUG_HOOK__) { continue; }',
   '      var buf = w.__FLUIG_DEBUG_LOGS__ = (w.__FLUIG_DEBUG_LOGS__ || []);',
-  '      var push = function (level, msg) { try { buf.push({ level: level, msg: msg }); if (buf.length > MAX) { buf.shift(); } } catch (e) {} };',
+  // O `t` (epoch ms) e o que permite a aba Logs mostrar a hora de cada linha e
+  // o JSON do dump sair com hora legivel. Marcado na PAGINA, no momento do log —
+  // o painel so le o buffer depois, na varredura.
+  '      var push = function (level, msg) { try { buf.push({ level: level, msg: msg, t: Date.now() }); if (buf.length > MAX) { buf.shift(); } } catch (e) {} };',
   '      var serialize = function (args) {',
   '        var parts = [];',
   '        for (var k = 0; k < args.length; k++) {',

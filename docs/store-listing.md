@@ -9,9 +9,14 @@ Google normalmente). Textos abaixo prontos para colar no Developer Dashboard.
 Fluig Debug
 
 ## Descrição curta (máx. 132 caracteres)
-> Painel no DevTools para inspecionar e manipular formulários da plataforma TOTVS Fluig (ler/setar campos, dump de estado).
+> Aba no DevTools para depurar formulários TOTVS Fluig: ler e alterar campos pelo nome, gravar no banco e exportar o estado.
 
-(121 caracteres — dentro do limite.)
+(122 caracteres — dentro do limite.)
+
+**Este texto tem de ser igual ao `description` do `manifest.json`.** Esse campo é
+o "Resumo do pacote" da loja e **não é editável no Dashboard** — só sai por
+upload de versão nova. Foi o que fez o acento de "formulários" ficar faltando da
+v1.0.0 até a v2.0.0.
 
 ## Categoria
 Ferramentas para desenvolvedores (Developer Tools)
@@ -43,26 +48,35 @@ O resultado prático é que boa parte do tempo de depuração vai em descobrir o
 
 FUNCIONALIDADES
 
-Ler campo
-Mostra o valor atual de um campo pelo nome lógico e marca o que encontrou: campo desabilitado, somente leitura, tipo do input, linha da tabela. Quando você informa uma linha específica ("descricao___1"), exibe também os demais campos daquela mesma linha da tabela pai-filho.
+Todos os campos numa tabela editável
+O painel abre já com a lista completa dos campos da página, um por linha, com nome, tipo e valor. Ler é olhar; alterar é dar um duplo clique no valor e digitar o novo. O filtro busca por nome ou por valor — dá para partir de um valor que você vê na tela e descobrir de que campo ele veio.
 
-Autocomplete de nome de campo
-Nos três campos de nome, as opções aparecem conforme você digita — não é preciso saber o nome exato de cabeça. Cada sugestão mostra o valor atual e os mesmos marcadores do resultado da leitura. Navegação por setas, Enter escolhe, Esc fecha; a seta para baixo com o campo vazio lista todos os campos da página. Digitar "___" troca para a escolha da linha da tabela pai-filho.
+Tabelas pai-filho como planilha
+Cada tabela pai-filho aparece em um bloco próprio, no formato de planilha: as colunas são os campos e as linhas são as linhas da tabela. Comparar o mesmo campo entre linhas é olhar para baixo, em vez de caçar sufixos numa lista. O número da linha fica fixo ao rolar de lado, cada célula é editável e há um atalho para copiar a linha inteira. Um campo que existe em outras linhas mas falta naquela aparece marcado como ausente, em vez de vazio.
 
-Setar campo (no formulário)
-Altera o valor do campo na página. Sempre mostra uma confirmação com o nome real encontrado, o valor atual e o novo valor antes de aplicar. Se o nome digitado casar com várias ocorrências, nada é alterado e a extensão pede a ocorrência exata.
+O estado de cada campo é visível na própria linha
+Uma faixa colorida na borda esquerda diz o que é aquele campo sem você ler nada: campo desabilitado, campo somente leitura, campo oculto, linha de tabela pai-filho. O prefixo "_" e o sufixo "___N" aparecem esmaecidos dentro do nome, porque é justamente ali que mora a confusão.
 
-Setar campo no banco
-Grava o valor direto no banco, via o dataset dsSetCardValue e o documentId da solicitação. Serve para os casos em que alterar o DOM não resolve — o principal é a solicitação finalizada. Também passa por confirmação obrigatória, que mostra o valor a ser sobrescrito.
+Ler um campo pelo nome
+Uma linha de comando na base do painel lê o valor atual direto da página, destaca a linha correspondente na tabela e mostra o resultado. O autocomplete sugere os campos existentes conforme você digita — não é preciso saber o nome exato de cabeça — com o valor atual de cada um. Navegação por setas, Enter lê, Tab completa, Esc fecha. Digitar "___" troca para a escolha da linha da tabela pai-filho.
 
-Histórico por seção
-Cada seção de interação guarda um histórico do que passou por ali. Nas seções de alteração, o valor anterior e o novo, com um botão para restaurar o anterior — que preenche os campos e abre a confirmação. Na leitura, os valores lidos, com opção de ler de novo. O histórico existe apenas enquanto o DevTools está aberto.
+Alterar o valor no formulário
+O editor que abre na célula mostra o valor atual riscado ao lado do novo, então você vê exatamente o que está sendo trocado antes de aplicar. A alteração mira a ocorrência exata daquela linha, sem ambiguidade.
 
-Solicitação (documentId)
-Ao abrir o painel sobre uma solicitação de workflow, resolve sozinho o número da solicitação (pelo parâmetro da URL) e o documentId, consultando o dataset workflowProcess do próprio Fluig. O valor vem do dataset, não de heurística sobre o HTML.
+Gravar direto no banco
+Grava o valor via o dataset dsSetCardValue e o documentId da solicitação. Serve para os casos em que alterar o formulário não resolve — o principal é a solicitação finalizada. Por não ter como desfazer, essa ação tem uma confirmação própria, que mostra a solicitação, o documentId, o valor atual e o novo.
 
-Dump do estado
-Exporta em JSON todos os campos e valores, as tabelas pai-filho agrupadas por linha e as mensagens de console e erros capturados desde a abertura do DevTools. Pronto para copiar e colar como contexto em uma análise.
+Solicitação e documentId
+Ao abrir o painel sobre uma solicitação de workflow, resolve sozinho o número da solicitação (pelo parâmetro da URL) e o documentId, consultando o dataset workflowProcess do próprio Fluig. O número e o documentId ficam visíveis no alto do painel, e uma aba própria mostra o detalhe da resolução. O valor vem do dataset, não de heurística sobre o HTML.
+
+Exportar o estado
+Exporta em JSON todos os campos e valores, as tabelas pai-filho agrupadas por linha e as mensagens de console capturadas, com hora. Pronto para copiar e colar como contexto em uma análise, ou salvar em arquivo.
+
+Mensagens de console em aba própria
+Os console.log, avisos e erros capturados desde a abertura do DevTools ficam listados com hora e nível, com filtro por texto e por nível.
+
+Histórico das ações
+Uma lista do que passou pelo painel na sessão, marcando o tipo de cada ação (leitura, alteração no formulário, gravação no banco), com o valor anterior e o novo. Restaurar leva o valor anterior de volta ao mesmo caminho de alteração, sem pular a confirmação. O histórico existe apenas enquanto o DevTools está aberto.
 
 PRIVACIDADE E ESCOPO
 
@@ -75,9 +89,11 @@ PRIVACIDADE E ESCOPO
 
 LIMITAÇÕES CONHECIDAS
 
-- Ao setar um valor no formulário, a extensão aplica o valor sem disparar os eventos change e blur, igual ao que se faz no console. Lógicas dependentes (cálculos, validações, zoom) podem não reexecutar.
+- Ao alterar um valor no formulário, a extensão aplica o valor sem disparar os eventos change e blur, igual ao que se faz no console. Lógicas dependentes (cálculos, validações, zoom) podem não reexecutar.
+- Em modo de visualização e em solicitação finalizada, o campo é um <span>: alterá-lo troca só o texto exibido, sem persistir nada. Nesses casos o caminho é a gravação no banco.
 - A captura de mensagens de console só pega o que acontece a partir da abertura do DevTools.
-- No "setar campo no banco", o valor anterior exibido é lido do DOM, porque o dataset de gravação não tem leitura correspondente. A interface rotula esse valor como tal.
+- Na gravação no banco, o valor anterior exibido é lido do formulário, porque o dataset de gravação não tem leitura correspondente. A interface rotula esse valor como tal.
+- A lista mostra até 300 linhas por vez em formulários muito grandes, e avisa quantas ficaram de fora — use o filtro.
 - Campos dentro de iframes de outra origem não são acessíveis.
 
 Ferramenta interna de apoio ao desenvolvimento, publicada como não listada para uso da equipe.
@@ -122,8 +138,10 @@ Ferramenta interna de apoio ao desenvolvimento, publicada como não listada para
 ## Assets a subir (feitos por você)
 - **Ícone da loja 128×128**: usar `extension/icons/icon128.png`.
 - **Screenshot** (mín. 1; 1280×800 ou 640×400): capturar o painel "Fluig Debug"
-  aberto sobre uma solicitação real (aba do DevTools com as seções Solicitação /
-  Ler campo / Dump visíveis).
+  aberto sobre uma solicitação real, na aba **Campos**, com a tabela preenchida,
+  uma banda de tabela pai-filho visível e de preferência uma célula em edição —
+  é o que mostra a proposta da v2 num quadro só. Cuidado com dado real de cliente
+  na captura (nome, CPF, valor): prefira uma solicitação de homologação.
 
 ## Empacotamento
 - Zipar **o conteúdo da pasta `extension/`** (manifest na raiz do zip), sem a
