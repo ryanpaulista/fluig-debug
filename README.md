@@ -176,16 +176,31 @@ campos** e **linhas = `___N`**, atrás de uma banda colapsável
 
 **A linha modelo.** A tabela pai-filho do Fluig carrega um molde cujos campos vêm
 **sem** o `___N` (`ENTRY_ID` ao lado de `ENTRY_ID___1`). Esses campos entram na
-planilha como primeira linha, marcada `mod` — mas **só quando têm algum valor**.
-Molde inteiramente vazio (o caso normal) não aparece e **não conta**: uma tabela
-de 2 linhas diz `2 linha(s)`, não 3. Quando existe e é mostrado, a banda avisa com
-`+ modelo`. Os campos omitidos continuam no JSON da aba Estado e no autocomplete
-do prompt, e o `title` da banda diz quantos foram.
+planilha como primeira linha, marcada `mod`:
 
-O critério para mover um campo sem sufixo para dentro de uma tabela é duplo: estar
-no **mesmo container** dela **e** ter o nome de uma das **colunas** dela. Só o
-container não bastaria — formulário Fluig usa `<table>` para diagramar, e um campo
-comum dentro de uma tabela de layout seria sequestrado para dentro dela.
+- Numa tabela **que tem registros**, o molde só aparece se tiver algum valor.
+  Molde vazio (o caso normal) não aparece e **não conta**: uma tabela de 2 linhas
+  diz `2 linha(s)`, não 3. Quando aparece, a banda avisa `+ modelo`. Os campos
+  omitidos continuam no JSON da aba Estado e no autocomplete do prompt, e o
+  `title` da banda diz quantos foram.
+- Numa tabela **sem nenhum registro**, o molde **sempre** aparece, mesmo vazio —
+  ele é a única representação daqueles campos, e sem ele eles ficariam invisíveis
+  e ineditáveis no grid. A contagem continua `0 linha(s)` e a banda diz
+  `sem registros — só a linha modelo`.
+
+**Como um campo sem sufixo é atribuído a uma tabela** — dois critérios, conforme a
+força do sinal:
+
+- **`[tablename]` é prova definitiva.** Esse atributo só existe em tabela
+  pai-filho do Fluig, então um campo dentro dele pertence a ela, ponto — inclusive
+  quando a tabela não tem nenhuma linha `___N`. É o caso da tabela sem registros
+  (`timesDeleted`), que antes nem existia como tabela e deixava os campos do molde
+  soltos na lista geral.
+- **Qualquer outro container** (id ou posição do `<table>`, `<div>` com id) é sinal
+  fraco, então exige **também** que o nome do campo seja uma das **colunas** da
+  tabela. Sem essa segunda condição, um campo comum dentro de uma `<table>` usada
+  para diagramar — coisa comum em formulário Fluig — seria sequestrado para dentro
+  dela.
 
 **Como as tabelas são identificadas.** O agrupamento tenta, em ordem:
 `[tablename]` → id do `<table>` → posição do `<table>` no documento → container

@@ -762,13 +762,6 @@ function buildSheet(key, label, how, entries, templates) {
     var tplHasValue = false;
     templates.forEach(function (e) {
       if (e.value !== '') { tplHasValue = true; }
-      // Coluna que so existe no molde entra no fim: o campo esta no DOM, e
-      // esconder a coluna o tornaria invisivel (e ineditavel) no grid.
-      if (!colSeen[e.name]) {
-        colSeen[e.name] = 1;
-        cols.push(e.name);
-        colType[e.name] = e.type;
-      }
       var cur = tplCells[e.name];
       if (!cur || (cur.value === '' && e.value !== '')) { tplCells[e.name] = e; }
     });
@@ -781,6 +774,15 @@ function buildSheet(key, label, how, entries, templates) {
     // grid. Ali ele fica, e a contagem de linhas continua 0 (ele nao e linha da
     // tabela, e a banda diz isso).
     if (tplHasValue || rowOrder.length === 0) {
+      // Coluna que so existe no molde entra no fim — mas SO quando o molde vai
+      // aparecer. Adicionar a coluna com a linha descartada deixaria uma coluna
+      // de "—" em todas as linhas, com o campo ineditavel.
+      Object.keys(tplCells).forEach(function (name) {
+        if (colSeen[name]) { return; }
+        colSeen[name] = 1;
+        cols.push(name);
+        colType[name] = tplCells[name].type;
+      });
       rows.unshift({ id: 'tpl', label: 'mod', template: true, cells: tplCells });
     } else {
       tplOmitted = templates.length;
@@ -1152,20 +1154,12 @@ function renderGrid() {
     }
 
     // planilha
+    //
+    // Tabela sem registro nenhum nao precisa de caminho proprio: ela chega aqui
+    // com a linha modelo como unica linha, entao `dataTotal` da 0 e a banda diz
+    // "sem registros" — o cabecalho das colunas ja mostra a forma da tabela.
     lastSheets[item.key] = item;
     var rows = sheetVisibleRows(item, q);
-
-    // Tabela sem registro nenhum: `rows` e vazio por natureza, nao por filtro.
-    // Ela continua na lista, com a banda e o cabecalho das colunas — e o que diz
-    // "esta tabela existe e tem esta forma, so nao tem linha".
-    if (!item.rows.length) {
-      if (q && !sheetHeadMatches(item, q)) { return; }
-      var emptyCollapsed = !!collapsedTables[item.key] && !q;
-      html += bandHtml(item, 0, 0, emptyCollapsed, false);
-      if (!emptyCollapsed) { html += sheetHtml(item, []); }
-      return;
-    }
-
     if (!rows.length) { return; }
 
     var dataTotal = countData(rows);

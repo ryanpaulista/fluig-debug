@@ -296,11 +296,21 @@ DBeaver / DataGrip, não dashboard.
   - **Campo ausente naquela linha vira `—`**, não célula vazia: vazio é um valor
     possível e não pode ser confundido com ausente.
   - **A linha modelo** (campos sem `___N`, o molde que o Fluig mantém) entra na
-    planilha, não na lista de campos simples — mas **só quando tem algum valor**.
-    Molde vazio é o caso normal e não informa nada; pior, inflava a contagem da
-    banda ("3 linha(s)" para uma tabela de 2). Vazio, não existe: nem linha, nem
-    contagem. Os campos seguem no JSON e no autocomplete, e o `title` da banda diz
-    quantos foram omitidos — omissão silenciosa se lê como "não existe".
+    planilha, não na lista de campos simples. Numa tabela **com** registros ela só
+    aparece se tiver algum valor: molde vazio é o caso normal, não informa nada e
+    inflava a contagem da banda ("3 linha(s)" para uma tabela de 2). Os campos
+    seguem no JSON e no autocomplete, e o `title` da banda diz quantos foram
+    omitidos — omissão silenciosa se lê como "não existe".
+  - **Tabela sem nenhum registro continua na lista de tabelas**, com o cabeçalho
+    das colunas e a banda dizendo `0 linha(s) · sem registros`. Antes ela nem
+    existia como tabela — sem entrada `___N` para agrupar, os campos do molde
+    caíam na lista de campos simples, exatamente o sintoma que a v2 veio corrigir.
+    Nesse caso a linha modelo é **mantida mesmo vazia**: ela é a única
+    representação daqueles campos, e descartá-la os tornaria invisíveis e
+    ineditáveis no grid. A contagem segue 0 — o molde não é linha da tabela.
+  - **Coluna que só existe no molde** entra no fim das colunas, mas **só quando o
+    molde vai aparecer**. Adicioná-la com a linha descartada deixaria uma coluna de
+    `—` em todas as linhas, com o campo ineditável.
   - **A contagem da banda é de linhas de DADOS.** A linha modelo, quando aparece,
     é anunciada separada (`+ modelo`): ela não é uma linha da tabela.
   - **Redimensionar no arraste**, como numa planilha: borda direita do cabeçalho
@@ -329,6 +339,12 @@ DBeaver / DataGrip, não dashboard.
   → **posição do `<table>` no documento** → container com id (tabela montada com
   `<div>`) — e a UI **diz qual critério usou** quando não foi o `tablename`,
   porque agrupamento torto é quase sempre falta desse atributo.
+
+  O critério também define **quanta confiança** o agrupamento merece, e isso muda
+  o comportamento: com `[tablename]` (prova definitiva, o atributo só existe em
+  tabela pai-filho) um campo sem `___N` é atribuído à tabela sem mais perguntas;
+  com os fallbacks, exige-se também que o nome dele seja uma das colunas, senão um
+  campo comum dentro de uma `<table>` de diagramação seria sequestrado.
 - **Estado do campo entra na forma, não em pílula.** Faixa de 2px na borda
   esquerda da linha: âmbar = desabilitado (`_`), cinza = `span` só-leitura,
   violeta = `hidden`, aço = linha de tabela. Dá para varrer a coluna sem ler
