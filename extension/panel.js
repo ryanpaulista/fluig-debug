@@ -43,6 +43,30 @@ function evalInPage(expression) {
   });
 }
 
+// Falha legivel, venha de onde vier.
+//
+// O .catch de uma corrente de promise pega DOIS tipos de erro: o do eval na
+// pagina (um exceptionInfo, objeto simples do DevTools) e o de um bug no proprio
+// painel dentro do .then de sucesso. O segundo chega como Error — e
+// JSON.stringify de um Error da "{}", porque name/message/stack nao sao
+// enumeraveis. Era isso que fazia uma acao BEM SUCEDIDA terminar com
+// "Erro ao aplicar: {}": o valor tinha sido setado, e o estouro vinha depois, na
+// hora de registrar no historico.
+function describeFailure(err) {
+  if (err == null) { return 'sem detalhes'; }
+  if (typeof err === 'string') { return err; }
+  // exceptionInfo do inspectedWindow.eval, nas duas formas documentadas.
+  if (err.isError && err.description) { return String(err.description); }
+  if (err.isException) { return String(err.value != null ? err.value : 'exceção na página'); }
+  // Error (ou qualquer coisa com message): a mensagem e o que interessa.
+  if (typeof err.message === 'string' && err.message) {
+    return (err.name ? err.name + ': ' : '') + err.message;
+  }
+  var json = null;
+  try { json = JSON.stringify(err); } catch (e) {}
+  return json && json !== '{}' ? json : String(err);
+}
+
 // Helpers injetados dentro do IIFE de cada expressao (varredura de frames +
 // normalizacao de nome).
 var PAGE_HELPERS = [
@@ -522,6 +546,13 @@ function renderValue(v) {
   return v === '' || v == null ? '<span class="q">vazio</span>' : esc(v);
 }
 
+// O valor dentro de uma celula do grid. A caixa `.cl` e quem corta em N linhas
+// (ver o CSS): o corte precisa de uma caixa sem padding, senao sobra uma tira da
+// linha seguinte dentro do padding da celula.
+function cellValueHtml(v) {
+  return '<span class="cl">' + renderValue(v) + '</span>';
+}
+
 function ellipsis(v, max) {
   var s = String(v == null ? '' : v).replace(/\s+/g, ' ').replace(/^ | $/g, '');
   return s.length > max ? s.slice(0, max) + '…' : s;
@@ -673,9 +704,9 @@ function rescan(reason) {
         model.meta.fieldCount + ' campo(s), ' + model.meta.tableCount + ' tabela(s), ' +
         model.meta.logCount + ' log(s)');
     })
-    .catch(function (exceptionInfo) {
+    .catch(function (err) {
       model.scanning = false;
-      model.error = JSON.stringify(exceptionInfo);
+      model.error = describeFailure(err);
       renderAllFromModel();
       setStatus('err', 'Erro ao varrer: ' + esc(model.error));
     });
@@ -705,7 +736,17 @@ function paintTabCounts() {
 // e o que se quer ver — ficava so no sufixo ___N. Como planilha, comparar a
 // mesma coluna entre linhas volta a ser olhar para baixo.
 
-var collapsedTables = {};
+// Tabela pai-filho nasce COLAPSADA; expandir e um ato do usuario (`expandedTables`
+// guarda so o que ele abriu). Um formulario real desta base tem mais de 100
+// tabelas: abertas por padrao, os campos simples — que sao o que se procura na
+// maioria das vezes — ficavam soterrados sob milhares de linhas de planilha.
+// Colapsado, a banda de cada tabela continua visivel com nome, contagem de linhas
+// e de campos, entao nada fica escondido: fica fechado.
+//
+// Zerado na navegacao (a pagina nova tem outras tabelas), preservado na
+// revarredura — o que voce abriu continua aberto depois de mexer no formulario.
+// Filtro ativo ignora o colapso: quem filtrou quer ver o que casou, onde estiver.
+var expandedTables = {};
 
 // Sheets do ultimo render, para as acoes por linha acharem a tabela sem
 // reconstruir a lista inteira.
@@ -940,7 +981,7 @@ function rowHtml(item, n) {
     '<div class="c-n">' + n + '</div>' +
     '<div class="c-name" title="' + rowTitle(e) + '">' + nameHtml(e) + '</div>' +
     '<div class="c-type">' + esc(typeLabel(e)) + '</div>' +
-    '<div class="c-val" data-edit data-i="' + e.idx + '">' + renderValue(e.value) + '</div>' +
+    '<div class="c-val" data-edit data-i="' + e.idx + '">' + cellValueHtml(e.value) + '</div>' +
     '<div class="c-acts">' +
     '<button class="abtn" type="button" data-act="edit" title="' + escAttr(editTitle) + '">setar</button>' +
     '<button class="abtn" type="button" data-act="copy" title="Copiar o name/id cru (com o _ e o ___N)">nome</button>' +
@@ -1049,7 +1090,7 @@ function sheetHtml(sheet, rows) {
       }
       var st = stateClass(e);
       return '<div class="sh-c' + (st ? ' ' + st : '') + '" data-edit data-i="' + e.idx +
-        '" title="' + rowTitle(e) + '">' + renderValue(e.value) + '</div>';
+        '" title="' + rowTitle(e) + '">' + cellValueHtml(e.value) + '</div>';
     }).join('');
 
     var rhTitle = (r.template
@@ -1164,9 +1205,9 @@ function renderGrid() {
 
     var dataTotal = countData(rows);
 
-    // Colapsada: mostra so a banda, que e o que permite reabrir. Filtro ativo
-    // ignora o colapso — quem filtrou quer ver o que casou, onde estiver.
-    if (collapsedTables[item.key] && !q) {
+    // Colapsada (o padrao): mostra so a banda, que e o que permite abrir. Filtro
+    // ativo ignora o colapso — quem filtrou quer ver o que casou, onde estiver.
+    if (!expandedTables[item.key] && !q) {
       html += bandHtml(item, 0, dataTotal, true, false);
       return;
     }
@@ -1252,8 +1293,7 @@ function repaintCell(idx) {
   var cell = cellFor(idx);
   if (!cell) { return; }
   var e = model.entries[idx];
-  cell.classList.remove('editing');
-  cell.innerHTML = renderValue(e.value);
+  cell.innerHTML = cellValueHtml(e.value);
   var host = hostFor(cell);
   if (!host) { return; }
   host.className = host.className.replace(/\s*st-\w+/g, '');
@@ -1408,84 +1448,37 @@ function copySheetRow(token) {
 }
 
 // ---------------------------------------------------------------------------
-// Grid — editor inline
+// Grid — editor de valor (faixa no rodape)
 // ---------------------------------------------------------------------------
 //
-// O editor E a confirmacao do set no DOM: mostra o valor atual riscado ao lado
-// do novo, e nada e aplicado sem clicar em DOM (ou Enter). Gravar no banco nao
-// tem desfazer, entao esse caminho ganha um passo explicito proprio (faixa de
-// confirmacao ambar).
-
-var editing = null; // { idx, cell, host, mode: 'inline' | 'panel', shRow, restoreHeight }
-
-// Cabe numa linha da celula? Decide entre editar na propria celula (valor curto,
-// o caso rapido do dia a dia) e abrir o editor de valor longo.
+// UM editor so, sempre no rodape do painel — nunca dentro da celula.
 //
-// O criterio e a largura REAL da celula, nao um numero fixo de caracteres: se o
-// usuario alargou a coluna, mais coisa cabe in-place. ~6.6px por caractere e a
-// largura do mono a 11.5px; 96px ficam reservados para os botoes DOM/banco.
-function fitsInline(cell, value) {
-  if (String(value).indexOf('\n') >= 0) { return false; }
-  var avail = (cell.clientWidth || 120) - 96;
-  return String(value).length * 6.6 <= avail;
-}
+// Antes havia dois: um <input> in-place para valor curto e a faixa do rodape para
+// valor longo. Editar in-place nao sobrevive a largura real de uso: acoplado na
+// LATERAL do DevTools a celula tem ~120px, e ali nao cabem input + valor riscado
+// + botoes DOM/banco. O editor mudava de lugar conforme o tamanho do valor, o que
+// tambem tira a previsibilidade — duplo clique tem de abrir SEMPRE a mesma coisa,
+// no mesmo lugar.
+//
+// A celula nao e esvaziada: continua mostrando o valor atual, destacada, enquanto
+// se edita (igual planilha com barra de formulas). Por isso o "valor de antes"
+// nao precisa ser repetido dentro do editor.
+//
+// O editor E a confirmacao do set no DOM: nada e aplicado sem clicar em DOM (ou
+// Ctrl+Enter). Gravar no banco nao tem desfazer, entao esse caminho ganha um
+// passo explicito proprio (faixa de confirmacao ambar).
+
+var editing = null; // { idx, cell, host }
 
 function closeEditor(silent) {
   if (!editing) { return; }
   var idx = editing.idx;
   var host = editing.host;
-  var shRow = editing.shRow;
-  var restoreHeight = editing.restoreHeight;
-  var mode = editing.mode;
   editing = null;
-  if (mode === 'panel') { el('veditor').removeAttribute('data-on'); }
+  el('veditor').removeAttribute('data-on');
   repaintCell(idx);
   if (host) { host.classList.remove('on'); }
-  // Devolve a altura que o usuario havia fixado no arraste.
-  if (shRow && restoreHeight) { shRow.style.height = restoreHeight; }
   if (!silent) { setStatus('', 'Edição cancelada.'); }
-}
-
-// Editor de valor longo: mesma acao dos botoes do editor in-place, so em outra
-// superficie. A celula NAO e esvaziada — ela continua mostrando o valor atual,
-// destacada, enquanto se edita (igual planilha com barra de fórmulas).
-function openPanelEditor(idx, prefill) {
-  var e = model.entries[idx];
-  var cell = cellFor(idx);
-  var host = hostFor(cell);
-  var current = prefill != null ? prefill : e.value;
-
-  editing = { idx: idx, cell: cell, host: host, mode: 'panel', shRow: null, restoreHeight: null };
-  if (host) { host.classList.add('on'); }
-
-  el('ve-name').textContent = e.raw;
-  el('ve-name').title = e.raw + ' · ' + typeLabel(e) + ' · frame ' + e.frame;
-  el('ve-meta').textContent = typeLabel(e) + ' · ' + current.length +
-    ' caractere(s) · Ctrl+Enter aplica no DOM · Esc cancela';
-
-  var ta = el('ve-text');
-  ta.value = current;
-  el('veditor').setAttribute('data-on', '');
-
-  // Altura pelo conteudo, com teto: passando disso o proprio textarea rola, e o
-  // usuario ainda pode esticar (resize vertical nativo).
-  ta.style.height = 'auto';
-  var wanted = ta.scrollHeight + 2;
-  var max = Math.round((window.innerHeight || 600) * 0.45);
-  ta.style.height = Math.min(Math.max(wanted, 64), max) + 'px';
-
-  ta.focus();
-  // Caret no inicio, SEM selecionar tudo: em valor longo o normal e mexer num
-  // trecho, e select-all faria a primeira tecla apagar mil caracteres.
-  try { ta.setSelectionRange(0, 0); } catch (err) {}
-  ta.scrollTop = 0;
-
-  var domBtn = el('btn-ve-dom');
-  domBtn.title = e.type === 'span'
-    ? 'Altera só o texto exibido (span, não é campo de formulário)'
-    : 'Aplica $(campo).val(valor) — sem disparar change/blur';
-
-  setStatus('', 'Editando <b>' + esc(e.raw) + '</b> no editor de valor longo — Ctrl+Enter aplica, Esc cancela.');
 }
 
 function openEditor(idx, prefill) {
@@ -1496,93 +1489,59 @@ function openEditor(idx, prefill) {
     setStatus('warn', 'A célula de <b>' + esc(e.raw) + '</b> não está visível — limpe o filtro.');
     return;
   }
-  if (editing && editing.idx === idx) { return; }
+  if (editing && editing.idx === idx) { el('ve-text').focus(); return; }
   closeEditor(true);
   // Um destaque por vez: o da celula em edicao substitui o de uma leitura
   // anterior, senao ficam dois destaques azuis sem relacao entre si.
   clearHighlight();
 
   var current = prefill != null ? prefill : e.value;
-
-  // Valor que nao cabe numa linha da celula vai para o editor de valor longo.
-  if (!fitsInline(cell, current)) {
-    openPanelEditor(idx, prefill);
-    return;
-  }
-
   var host = hostFor(cell);
 
-  // Linha com altura fixada no arraste precisa respirar enquanto edita, senao o
-  // editor fica cortado pela caixa da linha. A altura volta ao fechar.
-  var shRow = cell.closest ? cell.closest('.sh-row') : null;
-  var restoreHeight = shRow && shRow.style.height ? shRow.style.height : null;
-  if (restoreHeight) { shRow.style.height = ''; }
-
-  editing = {
-    idx: idx, cell: cell, host: host, mode: 'inline',
-    shRow: shRow, restoreHeight: restoreHeight
-  };
-
-  cell.classList.add('editing');
-  cell.innerHTML = '';
-
-  var wrap = document.createElement('div');
-  wrap.className = 'ed';
-
-  var input = document.createElement('input');
-  input.className = 'fld';
-  input.type = 'text';
-  input.value = current;
-  input.setAttribute('aria-label', 'novo valor de ' + e.raw);
-  wrap.appendChild(input);
-
-  // O riscado mostra o valor GRAVADO, nao o que veio preenchido (num restaurar do
-  // historico os dois sao diferentes, e o que interessa e o que esta lá agora).
-  if (e.value !== '') {
-    var was = document.createElement('span');
-    was.className = 'was';
-    was.textContent = ellipsis(e.value, 22);
-    was.title = e.value;
-    wrap.appendChild(was);
+  editing = { idx: idx, cell: cell, host: host };
+  if (host) {
+    host.classList.add('on');
+    // A celula editada tem de estar VISIVEL: o valor atual dela e a referencia do
+    // que se esta trocando, e o destaque e a unica pista de qual linha o editor
+    // do rodape esta mexendo.
+    if (host.scrollIntoView) { host.scrollIntoView({ block: 'nearest' }); }
   }
 
-  var bDom = document.createElement('button');
-  bDom.className = 'pbtn';
-  bDom.type = 'button';
-  bDom.textContent = 'DOM';
-  bDom.title = e.type === 'span'
+  el('ve-name').textContent = e.raw;
+  el('ve-name').title = e.raw + ' · ' + typeLabel(e) + ' · frame ' + e.frame;
+  el('ve-meta').textContent = typeLabel(e) + ' · ' + current.length +
+    ' caractere(s) · Ctrl+Enter aplica no DOM · Esc cancela';
+
+  var ta = el('ve-text');
+  ta.value = current;
+  ta.setAttribute('aria-label', 'novo valor de ' + e.raw);
+  el('veditor').setAttribute('data-on', '');
+
+  // Altura pelo conteudo, com teto: passando disso o proprio textarea rola, e o
+  // usuario ainda pode esticar (resize vertical nativo).
+  //
+  // Zera antes de medir: com a altura em 0 o scrollHeight e exatamente a altura do
+  // conteudo na largura atual. Com height:auto um textarea cai na altura de `rows`,
+  // e a medida passa a depender disso.
+  ta.style.height = '0px';
+  var wanted = ta.scrollHeight + 2;
+  var max = Math.round((window.innerHeight || 600) * 0.45);
+  ta.style.height = Math.min(Math.max(wanted, 46), max) + 'px';
+
+  ta.focus();
+  // Valor de uma linha: seleciona tudo, porque trocar o valor inteiro e o caso
+  // comum. Valor multilinha: caret no inicio, sem selecionar — ali se mexe num
+  // trecho, e select-all faria a primeira tecla apagar mil caracteres.
+  try {
+    if (current.indexOf('\n') >= 0) { ta.setSelectionRange(0, 0); ta.scrollTop = 0; }
+    else { ta.select(); }
+  } catch (err) {}
+
+  el('btn-ve-dom').title = e.type === 'span'
     ? 'Altera só o texto exibido (span, não é campo de formulário)'
     : 'Aplica $(campo).val(valor) — sem disparar change/blur';
-  bDom.addEventListener('click', function () { applyDomSet(idx, input.value); });
-  wrap.appendChild(bDom);
 
-  var bDb = document.createElement('button');
-  bDb.className = 'pbtn warn';
-  bDb.type = 'button';
-  bDb.textContent = 'banco';
-  bDb.title = 'Grava via dsSetCardValue, direto no banco — pede confirmação';
-  bDb.addEventListener('click', function () { askDbSet(idx, input.value); });
-  wrap.appendChild(bDb);
-
-  cell.appendChild(wrap);
-  if (host) { host.classList.add('on'); }
-  input.focus();
-  input.select();
-
-  input.addEventListener('keydown', function (ev) {
-    if (ev.key === 'Enter') {
-      ev.preventDefault();
-      applyDomSet(idx, input.value);
-      return;
-    }
-    if (ev.key === 'Escape') {
-      ev.preventDefault();
-      ev.stopPropagation();
-      closeEditor(false);
-    }
-  });
-
-  setStatus('', 'Editando <b>' + esc(e.raw) + '</b> — Enter aplica no DOM, Esc cancela.');
+  setStatus('', 'Editando <b>' + esc(e.raw) + '</b> — Ctrl+Enter aplica no DOM, Esc cancela.');
 }
 
 function applyDomSet(idx, value) {
@@ -1590,12 +1549,8 @@ function applyDomSet(idx, value) {
   if (!e) { return; }
   var before = e.value;
   // Fecha o editor sem o repaint do closeEditor (o valor novo so chega depois do
-  // eval), mas devolvendo a altura que o usuario havia fixado no arraste. O
-  // destaque da celula FICA — e a pista de qual linha acabou de mudar.
-  if (editing && editing.idx === idx) {
-    if (editing.mode === 'panel') { el('veditor').removeAttribute('data-on'); }
-    if (editing.restoreHeight) { editing.shRow.style.height = editing.restoreHeight; }
-  }
+  // eval). O destaque da celula FICA — e a pista de qual linha acabou de mudar.
+  if (editing && editing.idx === idx) { el('veditor').removeAttribute('data-on'); }
   editing = null;
   setStatus('busy', 'Aplicando em <b>' + esc(e.raw) + '</b>…');
 
@@ -1622,9 +1577,9 @@ function applyDomSet(idx, value) {
       setStatus('ok', '<b>' + esc(e.raw) + '</b> setado no DOM (' + result.setCount +
         ' elemento(s), ' + esc(result.frame) + '): ' + renderValue(before) + ' → ' + renderValue(e.value));
     })
-    .catch(function (exceptionInfo) {
+    .catch(function (err) {
       repaintCell(idx);
-      setStatus('err', 'Erro ao aplicar: ' + esc(JSON.stringify(exceptionInfo)));
+      setStatus('err', 'Erro ao aplicar em <b>' + esc(e.raw) + '</b>: ' + esc(describeFailure(err)));
     });
 }
 
@@ -1653,9 +1608,9 @@ function ensureDocInfo() {
       paintDocInfo();
       return docInfo;
     })
-    .catch(function (exceptionInfo) {
+    .catch(function (err) {
       docPending = null;
-      docInfo = { ok: false, message: 'Erro ao resolver: ' + JSON.stringify(exceptionInfo) };
+      docInfo = { ok: false, message: 'Erro ao resolver: ' + describeFailure(err) };
       paintDocInfo();
       return docInfo;
     });
@@ -1743,8 +1698,8 @@ function applyDbSet() {
         esc(result.documentId) + '): ' + renderValue(p.previousDom) + ' → ' + renderValue(result.fieldValue) +
         ' — recarregue o formulário para ver o valor atualizado.');
     })
-    .catch(function (exceptionInfo) {
-      setStatus('err', 'Erro ao gravar: ' + esc(JSON.stringify(exceptionInfo)));
+    .catch(function (err) {
+      setStatus('err', 'Erro ao gravar: ' + esc(describeFailure(err)));
     });
 }
 
@@ -1815,8 +1770,8 @@ function readByName(typed) {
         canRestore: false
       });
     })
-    .catch(function (exceptionInfo) {
-      setStatus('err', 'Erro ao ler: ' + esc(JSON.stringify(exceptionInfo)));
+    .catch(function (err) {
+      setStatus('err', 'Erro ao ler <b>' + esc(name) + '</b>: ' + esc(describeFailure(err)));
     });
 }
 
@@ -2049,8 +2004,14 @@ function acPick(i) {
 // guarda o valor anterior, e "restaurar" devolve o anterior passando pelos
 // mesmos passos de confirmacao.
 
+// NAO chamar de `history`: panel.js roda em escopo global, e `window.history` (o
+// History do navegador) e uma propriedade SEM setter. `var history = []` ali
+// falha em silencio no modo sloppy — a variavel continua sendo o History, e o
+// primeiro `history.unshift(...)` estoura "is not a function" DEPOIS de a leitura
+// ou o set ja terem funcionado. O sintoma era o erro em cima de uma acao bem
+// sucedida; o harness de teste nao pegava porque o sandbox nao tem window.
 var HISTORY_MAX = 50;
-var history = [];
+var actionHistory = [];
 var historySeq = 0;
 
 var HISTORY_KIND = { read: 'ler', set: 'DOM', dbset: 'banco' };
@@ -2063,8 +2024,8 @@ function pushHistory(entry) {
   // Leitura repetida do mesmo campo com o mesmo resultado colapsa em contador:
   // ler 5x para acompanhar um campo nao deve empurrar o resto do historico para
   // fora. Escrita nunca colapsa — cada gravacao e um evento proprio.
-  if (entry.kind === 'read' && history.length) {
-    var prev = history[0];
+  if (entry.kind === 'read' && actionHistory.length) {
+    var prev = actionHistory[0];
     if (prev.kind === 'read' && prev.label === entry.label && prev.signature === entry.signature) {
       prev.repeat++;
       prev.at = entry.at;
@@ -2074,14 +2035,14 @@ function pushHistory(entry) {
     }
   }
 
-  history.unshift(entry);
-  if (history.length > HISTORY_MAX) { history.length = HISTORY_MAX; }
+  actionHistory.unshift(entry);
+  if (actionHistory.length > HISTORY_MAX) { actionHistory.length = HISTORY_MAX; }
   paintHistoryButton();
   if (el('history-pop').hasAttribute('data-on')) { renderHistory(); }
 }
 
 function paintHistoryButton() {
-  el('btn-history').textContent = history.length ? 'histórico (' + history.length + ')' : 'histórico';
+  el('btn-history').textContent = actionHistory.length ? 'histórico (' + actionHistory.length + ')' : 'histórico';
 }
 
 function historyItemHtml(e) {
@@ -2109,14 +2070,14 @@ function historyItemHtml(e) {
 function renderHistory() {
   var box = el('history-pop');
   var head = '<div class="pop-h"><span>histórico · só nesta sessão do DevTools</span>' +
-    (history.length ? '<button class="abtn" type="button" data-hist-clear="1">limpar</button>' : '') +
+    (actionHistory.length ? '<button class="abtn" type="button" data-hist-clear="1">limpar</button>' : '') +
     '</div>';
 
-  if (!history.length) {
+  if (!actionHistory.length) {
     box.innerHTML = head + '<div class="pop-f">nenhuma ação registrada ainda</div>';
     return;
   }
-  box.innerHTML = head + history.map(historyItemHtml).join('');
+  box.innerHTML = head + actionHistory.map(historyItemHtml).join('');
 }
 
 function toggleHistory() {
@@ -2128,8 +2089,8 @@ function toggleHistory() {
 }
 
 function findHistoryEntry(id) {
-  for (var i = 0; i < history.length; i++) {
-    if (history[i].id === id) { return history[i]; }
+  for (var i = 0; i < actionHistory.length; i++) {
+    if (actionHistory[i].id === id) { return actionHistory[i]; }
   }
   return null;
 }
@@ -2430,7 +2391,7 @@ el('grid-body').addEventListener('click', function (e) {
   var band = e.target.closest('.band');
   if (band) {
     var key = band.getAttribute('data-band');
-    collapsedTables[key] = !collapsedTables[key];
+    expandedTables[key] = !expandedTables[key];
     renderGrid();
     return;
   }
@@ -2603,7 +2564,7 @@ el('history-pop').addEventListener('click', function (e) {
   if (reread) { rereadFromHistory(Number(reread)); return; }
 
   if (target.getAttribute('data-hist-clear')) {
-    history = [];
+    actionHistory = [];
     paintHistoryButton();
     renderHistory();
   }
@@ -2646,7 +2607,7 @@ chrome.devtools.network.onNavigated.addListener(function () {
   pendingDbSet = null;
   docInfo = null;
   docPending = null;
-  collapsedTables = {};
+  expandedTables = {};
   paintDocInfo();
   rescan('Página navegou — varrendo de novo…');
   ensureDocInfo();

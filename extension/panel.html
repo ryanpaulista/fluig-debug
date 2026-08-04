@@ -207,29 +207,52 @@
       .pane[data-on] { display: flex; }
 
       /* --- barra de acao/filtro -------------------------------------------- */
+      /* A barra QUEBRA em linhas em vez de espremer o que está nela. Com uma
+         linha só, o primeiro item a ser esmagado era justamente o campo de busca
+         (os contadores e botões à direita têm nowrap e não cedem espaço), que na
+         largura de painel acoplado na lateral virava um retângulo de ~15px, sem
+         cara de campo nenhuma. */
       .abar {
         flex: none;
         min-height: 29px;
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
-        gap: 6px;
-        padding: 0 8px;
+        gap: 4px 6px;
+        padding: 3px 8px;
         background: var(--ink-800);
         border-bottom: 1px solid var(--line);
       }
-      .fld {
+      /* Campo de busca. A lupa não é enfeite: é o que faz o campo continuar sendo
+         LIDO como busca quando o painel é estreito e ele encolhe. */
+      .search {
+        flex: 1 1 210px;
+        min-width: 150px;
+        max-width: 340px;
         height: 20px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        padding: 0 6px;
         background: var(--ink-900);
         border: 1px solid var(--line-2);
+      }
+      .search:focus-within { border-color: var(--steel); }
+      .search .si { flex: none; display: block; color: var(--faint); }
+      .search:focus-within .si { color: var(--steel); }
+      .search input {
+        flex: 1 1 auto;
+        min-width: 0;
+        height: 100%;
+        background: transparent;
+        border: 0;
+        outline: 0;
         color: var(--text);
         font-family: var(--mono);
         font-size: 11px;
-        padding: 0 6px;
-        min-width: 0;
+        padding: 0;
       }
-      .fld::placeholder { color: var(--faint); }
-      .fld:focus { outline: 0; border-color: var(--steel); }
-      .abar .fld { flex: 1 1 auto; max-width: 320px; }
+      .search input::placeholder { color: var(--faint); }
       .meta {
         font-family: var(--mono);
         font-size: 10.5px;
@@ -294,25 +317,40 @@
         overflow-wrap: anywhere;
       }
       .c-name .pre { color: var(--faint); }
-      .c-type { font-family: var(--mono); font-size: 10.5px; color: var(--dim); white-space: nowrap; }
+      /* Tipo longo (textarea, select-one) numa coluna estreita: reticências, não
+         corte no meio da palavra — corte seco se lê como defeito de render. */
+      .c-type {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        color: var(--dim);
+        white-space: nowrap;
+        text-overflow: ellipsis;
+      }
       .c-val {
         font-family: var(--mono);
         font-size: 11.5px;
-        /* Valor longo (JSON num hidden, texto de parecer) nao pode esticar a
-           linha indefinidamente: corta em 2 linhas COM reticencias, para o corte
-           ficar visivel. O valor inteiro continua na aba Estado. */
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: var(--clamp);
-        overflow: hidden;
-        overflow-wrap: anywhere;
         font-variant-numeric: tabular-nums;
         cursor: text;
       }
-      /* Em edicao a celula volta a ser bloco: o -webkit-box acima quebraria o
-         flex do editor inline. */
-      .c-val.editing { display: block; overflow: visible; -webkit-line-clamp: none; cursor: default; }
       .c-val .q { color: var(--faint); }
+
+      /* O corte do valor mora numa caixa PRÓPRIA dentro da célula, não na célula.
+         Valor longo (JSON num hidden, texto de parecer) não pode esticar a linha
+         indefinidamente: corta em N linhas COM reticências, para o corte ficar
+         visível — o valor inteiro continua na aba Estado e no editor.
+         Por que a caixa interna: `overflow: hidden` recorta na borda do PADDING, e
+         o -webkit-line-clamp desenha as reticências mas continua pintando as
+         linhas seguintes. Aplicado na célula, sobrava uma tira da linha seguinte
+         cortada ao meio dentro do padding de baixo. Sem padding, o recorte cai
+         exatamente no fim da última linha. */
+      .cl {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: var(--clamp);
+        max-height: calc(var(--clamp) * 1.45em);
+        overflow: hidden;
+        overflow-wrap: anywhere;
+      }
       .c-acts { display: flex; gap: 2px; justify-content: flex-end; opacity: 0; }
       .gr:hover .c-acts,
       .gr.on .c-acts,
@@ -344,8 +382,11 @@
       /* banda de tabela pai-filho */
       .band {
         display: flex;
+        /* Quebra ENTRE os pedaços (nome, contagens, nota) e não dentro deles: sem
+           isso, no painel estreito, um "tabela 3" virava "tabela" / "3". */
+        flex-wrap: wrap;
         align-items: center;
-        gap: 7px;
+        gap: 2px 7px;
         width: 100%;
         padding: 3px 8px 3px 6px;
         background: var(--ink-700);
@@ -361,7 +402,7 @@
       }
       .band:hover { background: var(--ink-600); }
       .band .tw { color: var(--faint); width: 8px; flex: none; }
-      .band b { color: var(--text); font-weight: 500; }
+      .band b { color: var(--text); font-weight: 500; white-space: nowrap; }
       /* Por que a tabela foi agrupada daquele jeito. Só aparece quando NÃO foi
          pelo tablename — agrupamento torto é quase sempre isso. */
       .band .how { color: var(--warn); }
@@ -437,15 +478,10 @@
         font-family: var(--mono);
         font-size: 11.5px;
         border-left: 2px solid transparent;
-        display: -webkit-box;
-        -webkit-box-orient: vertical;
-        -webkit-line-clamp: var(--clamp);
         overflow: hidden;
-        overflow-wrap: anywhere;
         font-variant-numeric: tabular-nums;
         cursor: text;
       }
-      .sh-c.editing { display: block; overflow: visible; -webkit-line-clamp: none; cursor: default; }
       .sh-c .q { color: var(--faint); }
       .sheet .sh-row:hover { background: var(--ink-850); }
       .sheet .sh-row:hover .sh-rh { background: var(--ink-600); }
@@ -460,11 +496,11 @@
       .sh-row.sh-tpl .sh-c { color: var(--dim); }
 
       /* altura "tudo": a célula cresce com o valor, sem reticências */
-      .grid[data-clamp="0"] .c-val,
-      .grid[data-clamp="0"] .sh-c {
+      .grid[data-clamp="0"] .cl {
         display: block;
         -webkit-line-clamp: unset;
         overflow: visible;
+        max-height: none;
         white-space: pre-wrap;
       }
       /* Com linha alta o número da linha alinha com a PRIMEIRA linha do texto,
@@ -506,16 +542,14 @@
 
       /* Linha com altura fixada no arraste: o corte passa a ser a caixa da linha,
          não o clamp global — é isso que faz o texto aparecer conforme se arrasta. */
-      .sh-row.sh-fixed .sh-c {
+      .sh-row.sh-fixed .sh-c .cl {
         display: block;
         -webkit-line-clamp: unset;
         overflow: hidden;
+        /* Quem manda no corte passa a ser a caixa da linha, não o clamp. */
+        max-height: none;
         white-space: pre-wrap;
       }
-      /* Em edição a célula tem de escapar do corte da linha, senão os botões
-         DOM/banco ficam cortados numa coluna estreita. (A altura fixa da linha é
-         solta pelo JS enquanto edita, e devolvida ao fechar.) */
-      .sh-row.sh-fixed .sh-c.editing { overflow: visible; }
 
       /* Durante o arraste o cursor não pode piscar ao passar por cima de texto,
          e nada pode ser selecionado por acidente. */
@@ -537,17 +571,7 @@
       }
       .gempty b { color: var(--dim); font-weight: 500; }
 
-      /* --- editor inline ---------------------------------------------------- */
-      .ed { display: flex; align-items: center; gap: 4px; }
-      .ed .fld { flex: 1 1 auto; height: 19px; }
-      .ed .was {
-        font-family: var(--mono);
-        font-size: 10px;
-        color: var(--faint);
-        white-space: nowrap;
-        text-decoration: line-through;
-        flex: none;
-      }
+      /* --- botao de acao ---------------------------------------------------- */
       .pbtn {
         height: 19px;
         padding: 0 7px;
@@ -565,10 +589,13 @@
       .pbtn.ghost { background: transparent; border-color: var(--line-2); color: var(--dim); }
       .pbtn.ghost:hover { color: var(--text); border-color: var(--line-2); background: var(--ink-600); }
 
-      /* --- editor de valor longo -------------------------------------------- */
-      /* Ancorado acima da command bar, não flutuando sobre a grade: nada de
+      /* --- editor de valor -------------------------------------------------- */
+      /* O ÚNICO editor: todo duplo clique numa célula abre aqui. Ancorado acima da
+         command bar, não flutuando sobre a grade nem dentro da célula: nada de
          cálculo de posição, nada de clipping pelo scroll horizontal da planilha,
-         e a célula continua visível e destacada enquanto se edita. */
+         e a célula continua visível e destacada enquanto se edita. É também o que
+         faz a edição funcionar com o painel estreito, onde uma célula tem ~120px
+         e um editor in-place não caberia. */
       .veditor {
         flex: none;
         display: none;
@@ -580,8 +607,9 @@
       .ve-head {
         flex: none;
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
-        gap: 8px;
+        gap: 4px 8px;
         padding: 4px 8px;
         border-bottom: 1px solid var(--line);
       }
@@ -592,7 +620,7 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        max-width: 40%;
+        max-width: 100%;
       }
       .ve-meta {
         font-family: var(--mono);
@@ -607,7 +635,7 @@
         box-sizing: border-box;
         /* resize vertical nativo: o usuário estica o editor sem código nenhum. */
         resize: vertical;
-        min-height: 64px;
+        min-height: 44px;
         margin: 0;
         padding: 6px 8px;
         background: var(--ink-900);
@@ -659,6 +687,9 @@
       }
       .prompt {
         flex: 1 1 auto;
+        /* Nunca colapsa: com o painel estreito os botões ao lado (nowrap) comeriam
+           o prompt até ele deixar de parecer um campo. */
+        min-width: 118px;
         display: flex;
         align-items: center;
         gap: 6px;
@@ -790,6 +821,8 @@
       .sbar .mk.busy { background: var(--steel); }
       .sbar .msg { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
       .sbar .msg b { color: var(--text); font-weight: 500; }
+      /* Não cede espaço nem quebra: quem encolhe é a mensagem, que tem reticências. */
+      #sb-info { flex: none; white-space: nowrap; }
       .sbar .msg code { font-size: 10.5px; }
 
       /* --- aba Estado (JSON) ------------------------------------------------ */
@@ -825,7 +858,9 @@
       .logs { flex: 1 1 auto; min-height: 0; overflow: auto; background: var(--ink-800); }
       .lg {
         display: grid;
-        grid-template-columns: 34px 62px 1fr;
+        /* 66px na coluna da hora porque "--:--:--" (log sem timestamp) é o texto
+           mais largo dela — em 62px ele quebrava linha. */
+        grid-template-columns: 34px 66px 1fr;
         border-bottom: 1px solid var(--line);
         border-left: 2px solid transparent;
         font-family: var(--mono);
@@ -870,6 +905,69 @@
       .todo { padding: 8px 9px; font-size: 11.5px; color: var(--faint); border-bottom: 1px solid var(--line); }
       .todo b { color: var(--dim); font-weight: 500; }
 
+      /* =====================================================================
+         Painel ESTREITO — DevTools acoplado na lateral
+         =====================================================================
+         É assim que a extensão é usada na maior parte do tempo: uma coluna de
+         ~330–620px ao lado do formulário, não a faixa larga do DevTools acoplado
+         embaixo. O layout de uma linha por barra não cabe nessa largura, e o que
+         era esmagado primeiro era sempre o campo de busca.
+         Aqui, nessa largura: a busca ganha uma linha inteira (volta a ter cara de
+         campo), o resumo longo sai da barra, e o grid perde as duas colunas que
+         não carregam informação — o número da linha e as ações, que voltam como
+         sobreposição no hover. */
+      @media (max-width: 620px) {
+        :root { --cols: minmax(84px, 1fr) 66px minmax(0, 1.4fr); }
+        /* A coluna de tipo é a mais apertada aqui, e "textarea"/"select-one" são
+           os rótulos mais longos: menos respiro lateral, mais texto legível. */
+        .c-type { padding-left: 5px; padding-right: 5px; }
+
+        .search {
+          flex-basis: 100%;
+          max-width: none;
+          order: -1;
+        }
+        /* Resumo redundante com a status bar e rótulo de botão: espaço melhor
+           gasto na busca. */
+        .abar .opt { display: none; }
+
+        .gr { position: relative; }
+        .gr > .c-n,
+        .gh > div:last-child { display: none; }
+        /* As ações viram sobreposição na borda direita da linha (só no hover, como
+           já eram). Cobrem o fim do valor por um instante — o valor inteiro
+           continua a um duplo clique de distância, no editor do rodapé. */
+        .c-acts {
+          position: absolute;
+          top: 0;
+          right: 0;
+          z-index: 2;
+          padding: 3px 6px;
+          background: var(--ink-700);
+          border-right: 0;
+          border-left: 1px solid var(--line-2);
+        }
+
+        /* A linha de meta do editor documenta o Ctrl+Enter: melhor quebrar em duas
+           linhas do que virar "Ctrl+Enter aplica no DO…". */
+        .ve-meta { white-space: normal; overflow: visible; }
+
+        /* Popover: o preview do valor não pode comer o nome do campo. */
+        .ac-i .vl { max-width: 45%; }
+        .hi { grid-template-columns: 46px 32px 1fr auto; gap: 6px; }
+      }
+
+      /* Mais estreito ainda: só o essencial na moldura. */
+      @media (max-width: 460px) {
+        .brand .bl { display: none; }
+        .tab { padding: 0 9px; }
+        #sb-info { display: none; }
+        /* Rótulo em cima, valor embaixo: 140px de rótulo + valor não caberia. */
+        .pr { grid-template-columns: 1fr; }
+        .pr dt { border-right: 0; }
+        .pr dd { padding-top: 0; }
+      }
+
       @media (prefers-reduced-motion: reduce) {
         * { transition: none !important; animation: none !important; }
       }
@@ -884,7 +982,7 @@
           <rect x="3" y="3" width="6" height="2" fill="currentColor"></rect>
           <rect x="3" y="7" width="4" height="2" fill="currentColor"></rect>
         </svg>
-        fluig debug
+        <span class="bl">fluig debug</span>
       </div>
       <div class="vsep"></div>
       <div class="tb-ctx" id="tb-ctx" title="Solicitação e documentId resolvidos a partir da URL">
@@ -914,12 +1012,18 @@
       <!-- ================= CAMPOS ================= -->
       <div class="pane" id="pane-campos" role="tabpanel" data-pane="campos" data-on>
         <div class="abar">
-          <input class="fld" id="grid-filter" type="text" placeholder="filtrar por nome ou valor" autocomplete="off" aria-label="filtrar campos" />
+          <label class="search" for="grid-filter" title="Filtra as linhas pelo nome do campo ou pelo valor que está nele">
+            <svg class="si" width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
+              <circle cx="4.5" cy="4.5" r="3.2" fill="none" stroke="currentColor" stroke-width="1.2"></circle>
+              <line x1="6.9" y1="6.9" x2="10" y2="10" stroke="currentColor" stroke-width="1.2"></line>
+            </svg>
+            <input id="grid-filter" type="text" placeholder="buscar campo ou valor" autocomplete="off" aria-label="buscar campo por nome ou valor" />
+          </label>
           <span class="meta" id="grid-count"></span>
           <div class="grow"></div>
-          <span class="meta" id="grid-meta"></span>
-          <div class="vsep"></div>
-          <span class="meta">altura</span>
+          <span class="meta opt" id="grid-meta"></span>
+          <div class="vsep opt"></div>
+          <span class="meta opt">altura</span>
           <button class="ibtn" type="button" data-clamp="1" title="Uma linha por célula">1</button>
           <button class="ibtn" type="button" data-clamp="2" aria-pressed="true" title="Duas linhas por célula">2</button>
           <button class="ibtn" type="button" data-clamp="5" title="Cinco linhas por célula">5</button>
@@ -968,9 +1072,9 @@
         <div class="cbar">
           <div class="pop" id="cmd-ac"></div>
           <div class="pop" id="history-pop"></div>
-          <div class="prompt">
+          <div class="prompt" title="Digite o nome de um campo: a lista sugere os campos da página e o Enter lê o valor atual e localiza a linha no grid">
             <span class="caret" aria-hidden="true">›</span>
-            <input id="cmd-input" type="text" placeholder="nome do campo — Enter lê da página e localiza no grid" autocomplete="off" aria-label="ler campo pelo nome" />
+            <input id="cmd-input" type="text" placeholder="nome do campo — Enter lê" autocomplete="off" aria-label="buscar e ler campo pelo nome" />
           </div>
           <button class="pbtn ghost" type="button" id="btn-cmd-read">ler</button>
           <button class="pbtn ghost" type="button" id="btn-history">histórico</button>
@@ -1002,8 +1106,14 @@
       <!-- ================= LOGS ================= -->
       <div class="pane" id="pane-logs" role="tabpanel" data-pane="logs">
         <div class="abar">
-          <input class="fld" id="logs-filter" type="text" placeholder="filtrar mensagens" autocomplete="off" aria-label="filtrar logs" />
-          <div class="vsep"></div>
+          <label class="search" for="logs-filter" title="Filtra as mensagens capturadas pelo texto">
+            <svg class="si" width="11" height="11" viewBox="0 0 11 11" aria-hidden="true">
+              <circle cx="4.5" cy="4.5" r="3.2" fill="none" stroke="currentColor" stroke-width="1.2"></circle>
+              <line x1="6.9" y1="6.9" x2="10" y2="10" stroke="currentColor" stroke-width="1.2"></line>
+            </svg>
+            <input id="logs-filter" type="text" placeholder="buscar mensagem" autocomplete="off" aria-label="buscar mensagem nos logs" />
+          </label>
+          <div class="vsep opt"></div>
           <button class="ibtn" type="button" data-log-level="all" aria-pressed="true">tudo</button>
           <button class="ibtn" type="button" data-log-level="error">erros <span class="mono" id="log-n-error">0</span></button>
           <button class="ibtn" type="button" data-log-level="warn">avisos <span class="mono" id="log-n-warn">0</span></button>

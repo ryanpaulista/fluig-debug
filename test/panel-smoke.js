@@ -21,6 +21,32 @@ const panes = [...html.matchAll(/data-pane="([^"]+)"/g)].map((m) => m[1]);
 const clamps = [...html.matchAll(/data-clamp="([^"]+)"/g)].map((m) => m[1]);
 
 const problems = [];
+
+// --- colisao com globais do window ------------------------------------------
+// panel.js roda em escopo global DE VERDADE no navegador, e ali `var X = ...` nao
+// cria variavel nenhuma quando window.X ja existe sem setter: a atribuicao falha
+// em silencio e X continua sendo o objeto do navegador. Foi exatamente o que
+// aconteceu com `var history = []` — o primeiro history.unshift(...) estourava
+// DEPOIS de a acao ter funcionado, e o painel reportava "Erro ao aplicar: {}" em
+// cima de um set bem sucedido. O sandbox do vm nao tem window, entao esta
+// checagem e estatica: nome declarado no topo do arquivo x lista de globais.
+const WINDOW_GLOBALS = [
+  'history', 'location', 'name', 'status', 'length', 'top', 'self', 'parent', 'frames',
+  'closed', 'origin', 'external', 'event', 'screen', 'navigator', 'document', 'window',
+  'opener', 'frameElement', 'crypto', 'performance', 'localStorage', 'sessionStorage',
+  'customElements', 'caches', 'indexedDB', 'isSecureContext', 'visualViewport',
+  'devicePixelRatio', 'innerWidth', 'innerHeight', 'outerWidth', 'outerHeight',
+  'scrollX', 'scrollY', 'pageXOffset', 'pageYOffset', 'screenX', 'screenY',
+  'close', 'focus', 'blur', 'open', 'alert', 'confirm', 'prompt', 'print', 'stop',
+  'scroll', 'scrollTo', 'scrollBy', 'postMessage', 'getSelection', 'matchMedia',
+];
+[...js.matchAll(/^(?:var|let|const)\s+([A-Za-z_$][\w$]*)|^function\s+([A-Za-z_$][\w$]*)/gm)]
+  .map((m) => m[1] || m[2])
+  .filter((n) => WINDOW_GLOBALS.includes(n))
+  .forEach((n) => {
+    problems.push(`"${n}" no escopo global colide com window.${n} — renomeie (no navegador a atribuicao falha em silencio)`);
+  });
+
 const writes = {};        // id -> ultimo innerHTML escrito
 const copyBuffer = [];    // textos que passaram pelo execCommand("copy")
 let lastSelected = null;  // ultimo elemento que recebeu .select()
@@ -231,6 +257,9 @@ docResult = {
 const sandbox = {
   document: fakeDocument,
   chrome,
+  // O editor de valor dimensiona o textarea por window.innerHeight. Sem window
+  // aqui a referencia estouraria em ReferenceError, nao em fallback.
+  window: { innerHeight: 700 },
   navigator: {},
   console,
   Promise,
@@ -278,8 +307,25 @@ setTimeout(() => {
   });
 
   // --- checa o HTML que o grid gerou ---------------------------------------
+  // O PRIMEIRO render e o do carregamento: tabelas colapsadas, so as bandas.
+  const firstRender = writes['grid-body'] || '';
+
+  // Daqui para baixo as checagens de planilha precisam das tabelas abertas — que
+  // e o que o usuario faz clicando na banda.
+  ctx.expandedTables['name:itens'] = true;
+  ctx.expandedTables['pos:2'] = true;
+  ctx.expandedTables[''] = true;
+  ctx.renderGrid();
+
   const grid = writes['grid-body'] || '';
+  const firstShcols = (grid.match(/--shcols: ([^"]+)"/) || [])[1] || '';
   const checks = [
+    // --- estado de carregamento ---
+    ['tabela nasce colapsada', /data-band="name:itens"[^>]*aria-expanded="false"/.test(firstRender)],
+    ['colapsada no carregamento nao emite planilha', !/class="sh-c/.test(firstRender)],
+    ['campo simples aparece no carregamento', /class="gr[^"]*" data-i="0"/.test(firstRender)],
+    ['banda colapsada anuncia a contagem de linhas', /data-band="name:itens"[^>]*>[\s\S]{0,120}?2 linha\(s\)/.test(firstRender)],
+
     ['grid renderizou linhas dos campos simples', /class="gr[^"]*" data-i="0"/.test(grid)],
     ['campo ___N NAO vira linha do grid plano', !/class="gr[^"]*" data-i="5"/.test(grid)],
     ['faixa de desabilitado', /st-off/.test(grid)],
@@ -296,7 +342,11 @@ setTimeout(() => {
     ['banda da tabela sem tablename', /data-band="pos:2"/.test(grid)],
     ['banda dos orfaos', /data-band=""/.test(grid)],
     ['as duas tabelas viraram planilhas separadas', (grid.match(/class="sheet"/g) || []).length === 3],
-    ['planilha declara uma coluna por campo', /--shcols: 46px repeat\(3, /.test(grid)],
+    // Uma entrada de largura POR COLUNA (nao um repeat()): e o que permite fixar
+    // em px so a coluna que o usuario arrastou, deixando as outras em 1fr.
+    ['planilha declara uma largura por campo',
+      firstShcols.indexOf('46px ') === 0 &&
+      firstShcols.split('minmax(104px, 1fr)').length - 1 === 3],
     ['cabecalho da planilha traz o nome do campo', /class="sh-hc"[^>]*>codProduto/.test(grid)],
     ['cabecalho da planilha traz o tipo', /class="ty">text</.test(grid)],
     ['linha da planilha usa o numero ___N', /class="sh-rh"[^>]*><span>1<\/span>/.test(grid) && /class="sh-rh"[^>]*><span>3<\/span>/.test(grid)],
@@ -370,29 +420,47 @@ setTimeout(() => {
   checks.push(['limpar o filtro devolve tudo',
     totalRows(writes['grid-body']) === 5 && sheetCells(writes['grid-body']) === 10]);
 
-  // colapsar a banda
-  ctx.collapsedTables['name:itens'] = true;
+  // clicar na banda: fecha de novo aquela tabela, e SO aquela
+  ctx.expandedTables['name:itens'] = false;
   F('renderGrid')();
   checks.push(['colapsar esconde as celulas daquela tabela', sheetCells(writes['grid-body']) === 5]);
   checks.push(['banda colapsada continua visivel',
     /data-band="name:itens"[^>]*aria-expanded="false"/.test(writes['grid-body'])]);
   checks.push(['colapsar uma tabela nao afeta a outra', /data-band="pos:2"[^>]*aria-expanded="true"/.test(writes['grid-body'])]);
-  ctx.collapsedTables['name:itens'] = false;
+
+  // filtro passa por cima do colapso: quem filtrou quer ver o que casou
+  get('grid-filter').value = 'codproduto';
+  F('renderGrid')();
+  checks.push(['filtro reabre a tabela colapsada', sheetCells(writes['grid-body']) === 5 &&
+    /data-band="name:itens"/.test(writes['grid-body'])]);
+  get('grid-filter').value = '';
+
+  ctx.expandedTables['name:itens'] = true;
   F('renderGrid')();
 
-  // editor inline no grid plano
+  // editor de valor: SEMPRE a faixa do rodape, para qualquer campo. Editar dentro
+  // da celula nao sobrevive a largura de uso real (painel acoplado na lateral).
   F('openEditor')(0);
   const cell0 = cellOf(0);
-  checks.push(['editor inline monta o input', cell0.children.length === 1 && cell0.children[0].children.length >= 3]);
-  checks.push(['celula em edicao vira bloco', cell0.classList.contains('editing')]);
-  const edButtons = cell0.children[0].children.filter((c) => c.textContent === 'DOM' || c.textContent === 'banco');
-  checks.push(['editor oferece DOM e banco', edButtons.length === 2]);
+  checks.push(['editar abre a faixa do rodape', get('veditor').hasAttribute('data-on')]);
+  checks.push(['editor carrega o valor atual', get('ve-text').value === '1 - STRATEGI']);
+  checks.push(['editor identifica o campo', get('ve-name').textContent === 'empresa']);
+  checks.push(['celula NAO e substituida pelo editor', cell0.children.length === 0]);
+  checks.push(['celula editada fica destacada', cell0.__host.classList.contains('on')]);
+  F('closeEditor')(true);
+  checks.push(['fechar o editor esconde a faixa', !get('veditor').hasAttribute('data-on')]);
+
+  // valor longo e valor curto na MESMA superficie: era o editor mudar de lugar
+  // conforme o tamanho do valor que tirava a previsibilidade do duplo clique.
+  F('openEditor')(3);
+  checks.push(['valor longo abre no mesmo editor', get('ve-text').value === '{"etapa":"x"}']);
   F('closeEditor')(true);
 
-  // editor inline numa CELULA de planilha
+  // celula de planilha
   F('openEditor')(6);
   const cell6 = cellOf(6);
-  checks.push(['celula de planilha tambem abre o editor', cell6.children.length === 1]);
+  checks.push(['celula de planilha tambem abre o editor',
+    get('veditor').hasAttribute('data-on') && get('ve-text').value === '5']);
   checks.push(['celula de planilha e o proprio host do destaque',
     cell6.classList.contains('sh-c') && cell6.classList.contains('on')]);
   F('closeEditor')(true);
@@ -408,12 +476,12 @@ setTimeout(() => {
   F('openEditor')(0);
 
   // set no DOM
-  const histLenBefore = ctx.history.length;
+  const histLenBefore = ctx.actionHistory.length;
   F('applyDomSet')(0, 'NOVO VALOR');
   setTimeout(() => {
     checks.push(['set no DOM grava o read-back no modelo', ctx.model.entries[0].value === 'NOVO VALOR']);
-    checks.push(['set no DOM entra no historico', ctx.history.length === histLenBefore + 1 && ctx.history[0].kind === 'set']);
-    checks.push(['historico guarda o valor anterior', ctx.history[0].from === '1 - STRATEGI']);
+    checks.push(['set no DOM entra no historico', ctx.actionHistory.length === histLenBefore + 1 && ctx.actionHistory[0].kind === 'set']);
+    checks.push(['historico guarda o valor anterior', ctx.actionHistory[0].from === '1 - STRATEGI']);
     checks.push(['status bar reporta o set', /setado no DOM/.test(writes['sb-msg'] || get('sb-msg').__html || '')]);
 
     // gravacao no banco: pede confirmacao antes de aplicar
@@ -427,11 +495,11 @@ setTimeout(() => {
       checks.push(['confirmacao mostra atual e novo', cRows.includes('maria') && cRows.includes('joao')]);
       checks.push(['nada gravado antes de confirmar', !evals.some((e) => e.includes('dsSetCardValue') && e.includes('"joao"'))]);
 
-      const histBeforeDb = ctx.history.length;
+      const histBeforeDb = ctx.actionHistory.length;
       F('applyDbSet')();
       setTimeout(() => {
         checks.push(['confirmar grava e fecha a faixa', !get('confirm-bar').hasAttribute('data-on')]);
-        checks.push(['gravacao no banco entra no historico', ctx.history.length === histBeforeDb + 1 && ctx.history[0].kind === 'dbset']);
+        checks.push(['gravacao no banco entra no historico', ctx.actionHistory.length === histBeforeDb + 1 && ctx.actionHistory[0].kind === 'dbset']);
         checks.push(['dsSetCardValue foi chamado com o valor', evals.some((e) => e.includes('dsSetCardValue') && e.includes('"joao"'))]);
 
         // linha de tabela avisa sobre a ausencia de conceito de linha
@@ -466,10 +534,10 @@ setTimeout(() => {
           F('readByName')('qtd');
           setTimeout(() => {
             checks.push(['ler atualiza o valor no modelo', ctx.model.entries[6].value === '9']);
-            checks.push(['ler entra no historico', ctx.history[0].kind === 'read']);
+            checks.push(['ler entra no historico', ctx.actionHistory[0].kind === 'read']);
             F('readByName')('qtd');
             setTimeout(() => {
-              checks.push(['leitura repetida identica colapsa em contador', ctx.history[0].repeat === 2]);
+              checks.push(['leitura repetida identica colapsa em contador', ctx.actionHistory[0].repeat === 2]);
 
               // linha existe mas o filtro a esconde: a status bar tem de dizer
               get('grid-filter').value = 'empresa';
@@ -501,11 +569,12 @@ setTimeout(() => {
                 checks.push(['historico renderiza os tres tipos', /k-read/.test(hHtml) && /k-set/.test(hHtml) && /k-dbset/.test(hHtml)]);
                 checks.push(['historico oferece restaurar na escrita', /data-hist-restore=/.test(hHtml)]);
 
-                const setEntry = ctx.history.filter((h) => h.kind === 'set')[0];
+                const setEntry = ctx.actionHistory.filter((h) => h.kind === 'set')[0];
                 F('restoreFromHistory')(setEntry.id);
                 checks.push(['restaurar abre o editor com o valor anterior',
-                  cellOf(0).children.length === 1 &&
-                  cellOf(0).children[0].children[0].value === '1 - STRATEGI']);
+                  get('veditor').hasAttribute('data-on') &&
+                  get('ve-text').value === '1 - STRATEGI' &&
+                  get('ve-name').textContent === 'empresa']);
 
                 report();
               }, 20);
