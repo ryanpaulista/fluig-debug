@@ -354,6 +354,41 @@ function render(id, html) {
   document.getElementById(id).innerHTML = html;
 }
 
+// Inline SVG string for the copy icon (reused across all copy buttons).
+var COPY_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+  '<rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/>' +
+  '<path d="M5 10.5H3.5a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 3.5 1.5h6A1.5 1.5 0 0 1 11 3v1.5"/>' +
+  '</svg>';
+
+// Copia texto e dá feedback visual no botão (troca o ícone por ✓ por 1.2s).
+// `btn` é o elemento que recebe a classe .copied; se null, só copia.
+function copyWithFeedback(text, btn) {
+  var ok = copyText(text);
+  if (!ok && navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text)
+      .then(function () { flashCopied(btn); })
+      .catch(function () {});
+    return;
+  }
+  if (ok) { flashCopied(btn); }
+}
+
+function flashCopied(btn) {
+  if (!btn) { return; }
+  btn.classList.add('copied');
+  setTimeout(function () { btn.classList.remove('copied'); }, 1200);
+}
+
+// Gera o HTML de um valor copiável: code + botão de copiar inline.
+function renderCopyable(value, escValue) {
+  if (value === '' || value == null) {
+    return '<span class="muted">(vazio)</span>';
+  }
+  var display = escValue || esc(value);
+  return '<span class="copyable"><code>' + display + '</code>' +
+    '<button type="button" class="btn-icon" data-copy="' + esc(value).replace(/"/g, '&quot;') + '" title="Copiar">' + COPY_SVG + '</button></span>';
+}
+
 function esc(value) {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -911,8 +946,8 @@ function readField() {
       result.matches.forEach(function (m) {
         html +=
           '<div class="match">' +
-          '<div class="row"><span class="k">name</span><code>' + esc(m.name) + '</code> ' + matchTags(m) + '</div>' +
-          '<div class="row"><span class="k">valor</span><code>' + renderValue(m.value) + '</code></div>' +
+          '<div class="row"><span class="k">name</span>' + renderCopyable(m.name) + ' ' + matchTags(m) + '</div>' +
+          '<div class="row"><span class="k">valor</span>' + renderCopyable(m.value) + '</div>' +
           '</div>';
       });
 
@@ -1076,8 +1111,8 @@ function applySet(target) {
       render('set-output',
         '<div class="row"><span class="k">Aplicado</span><span class="ok">' +
         esc(result.setCount) + ' elemento(s) em ' + esc(result.frame) + '</span></div>' +
-        '<div class="row"><span class="k">name</span><code>' + esc(result.target) + '</code></div>' +
-        '<div class="row"><span class="k">valor agora</span><code>' + renderValue(result.readBack) + '</code></div>'
+        '<div class="row"><span class="k">name</span>' + renderCopyable(result.target) + '</div>' +
+        '<div class="row"><span class="k">valor agora</span>' + renderCopyable(result.readBack) + '</div>'
       );
     })
     .catch(function (exceptionInfo) {
@@ -1397,6 +1432,7 @@ function setFromDump(idx) {
   render('set-output', '<span class="muted">Campo <code>' + esc(r.raw) +
     '</code> carregado do dump (valor atual: <code>' + renderValue(r.value) +
     '</code>). Digite o novo valor e clique em Setar.</span>');
+  switchTab('alterar');
   field.scrollIntoView({ block: 'center' });
   value.focus();
 }
@@ -1432,6 +1468,177 @@ function copyFieldName(idx) {
     return;
   }
   status.innerHTML = '<span class="muted">Não consegui copiar o nome.</span>';
+}
+
+// ---------------------------------------------------------------------------
+// Browser de campos (aba Ler)
+// ---------------------------------------------------------------------------
+//
+// Mostra os campos da pagina separados em:
+//   1. Campos simples (ordem alfabetica)
+//   2. Tabelas pai-filho (agrupadas e COLAPSADAS por padrao para nao poluir)
+//
+// Ao digitar no filtro, busca tanto nos campos normais quanto dentro das
+// tabelas (expandindo automaticamente o que casar).
+
+var browserFields = [];
+var browserExpandedTables = {};
+
+function loadFieldBrowser() {
+  var body = document.getElementById('field-browser-body');
+  if (!body) { return; }
+  if (!browserFields.length) {
+    body.innerHTML = '<span class="muted">Carregando campos…</span>';
+  }
+
+  ensureFieldIndex().then(function (index) {
+    browserFields = (index && index.fields) || [];
+    renderFieldBrowser();
+  });
+}
+
+function browserFieldTags(f, insideTable) {
+  var tags = [];
+  if (f.disabled) { tags.push('<span class="tag warn">desabilitado</span>'); }
+  if (!insideTable) {
+    if (f.rowCount) { tags.push('<span class="tag">' + f.rowCount + ' linha(s)</span>'); }
+    else if (f.occurrences > 1) { tags.push('<span class="tag">' + f.occurrences + '×</span>'); }
+    if (f.table) { tags.push('<span class="tag">' + esc(f.table) + '</span>'); }
+  } else {
+    if (f.occurrences > 1) { tags.push('<span class="tag">' + f.occurrences + '×</span>'); }
+  }
+  if (f.type === 'span') { tags.push('<span class="tag">somente leitura</span>'); }
+  else if (f.type) { tags.push('<span class="tag">' + esc(f.type) + '</span>'); }
+  return tags.join(' ');
+}
+
+function browserRowHtml(f, insideTable) {
+  return '<div class="dump-row">' +
+    '<div class="dump-name"><code>' + esc(f.logical) + '</code>' +
+    '<div class="dump-tags">' + browserFieldTags(f, insideTable) + '</div></div>' +
+    '<div class="dump-val">' + renderValue(f.value || '') + '</div>' +
+    '<div class="dump-acts">' +
+    '<button type="button" data-browse-read="' + esc(f.logical).replace(/"/g, '&quot;') + '">Ler</button>' +
+    '</div>' +
+    '</div>';
+}
+
+function renderFieldBrowser() {
+  var body = document.getElementById('field-browser-body');
+  if (!body) { return; }
+
+  if (!browserFields.length) {
+    body.innerHTML = '<span class="muted">Nenhum campo na página.</span>';
+    return;
+  }
+
+  var term = (document.getElementById('field-browser-filter') || {}).value || '';
+  var q = term.trim().toLowerCase();
+
+  // Separa campos simples e agrupa tabelas pai-filho
+  var simpleFields = [];
+  var tablesMap = {}; // tableName -> { name: string, rows: number, fields: [] }
+
+  browserFields.forEach(function (f) {
+    if (f.table || f.rowCount > 0) {
+      var tName = f.table || 'Tabela pai-filho';
+      if (!tablesMap[tName]) {
+        tablesMap[tName] = { name: tName, maxRows: 0, fields: [] };
+      }
+      if (f.rowCount > tablesMap[tName].maxRows) {
+        tablesMap[tName].maxRows = f.rowCount;
+      }
+      tablesMap[tName].fields.push(f);
+    } else {
+      simpleFields.push(f);
+    }
+  });
+
+  // Filtra
+  var filteredSimple = q
+    ? simpleFields.filter(function (f) {
+        return f.logical.toLowerCase().indexOf(q) >= 0 ||
+          (f.value || '').toLowerCase().indexOf(q) >= 0;
+      })
+    : simpleFields;
+
+  var tableKeys = Object.keys(tablesMap);
+  var tablesRenderData = [];
+  var totalTableFields = 0;
+
+  tableKeys.forEach(function (tName) {
+    var tbl = tablesMap[tName];
+    var matchedFields = q
+      ? tbl.fields.filter(function (f) {
+          return tName.toLowerCase().indexOf(q) >= 0 ||
+            f.logical.toLowerCase().indexOf(q) >= 0 ||
+            (f.value || '').toLowerCase().indexOf(q) >= 0;
+        })
+      : tbl.fields;
+
+    if (matchedFields.length > 0) {
+      tablesRenderData.push({
+        name: tName,
+        maxRows: tbl.maxRows,
+        fields: matchedFields,
+        totalInTable: tbl.fields.length,
+        // Se houver busca ativa, abre a tabela automaticamente para mostrar o resultado
+        expanded: q ? true : !!browserExpandedTables[tName]
+      });
+      totalTableFields += matchedFields.length;
+    }
+  });
+
+  if (filteredSimple.length === 0 && tablesRenderData.length === 0) {
+    body.innerHTML = '<span class="muted">Nenhum campo casa com o filtro.</span>';
+    return;
+  }
+
+  var html = '';
+
+  // 1. Campos simples
+  if (filteredSimple.length > 0) {
+    html += '<div class="browser-group-title">Campos simples (' + filteredSimple.length + ')</div>';
+    html += filteredSimple.map(function (f) { return browserRowHtml(f, false); }).join('');
+  }
+
+  // 2. Tabelas pai-filho
+  if (tablesRenderData.length > 0) {
+    html += '<div class="browser-group-title">Tabelas pai-filho (' + tablesRenderData.length + ')</div>';
+
+    tablesRenderData.forEach(function (tbl) {
+      var isExp = tbl.expanded;
+      var countLabel = (tbl.maxRows > 0 ? tbl.maxRows + ' linha(s) · ' : '') + tbl.fields.length + ' campo(s)';
+
+      html += '<div class="browser-table-band' + (isExp ? ' expanded' : '') + '" data-toggle-table="' + esc(tbl.name) + '">';
+      html += '<span class="caret">▶</span>';
+      html += '<span class="tbl-name">' + esc(tbl.name) + '</span>';
+      html += '<span class="tbl-meta">' + countLabel + '</span>';
+      html += '</div>';
+
+      if (isExp) {
+        html += '<div class="browser-table-content">';
+        html += tbl.fields.map(function (f) { return browserRowHtml(f, true); }).join('');
+        html += '</div>';
+      }
+    });
+  }
+
+  var totalShown = filteredSimple.length + totalTableFields;
+  html += '<div class="dump-foot muted">' + totalShown + ' campo(s) exibido(s).</div>';
+
+  body.innerHTML = html;
+}
+
+function toggleBrowserTable(tableName) {
+  browserExpandedTables[tableName] = !browserExpandedTables[tableName];
+  renderFieldBrowser();
+}
+
+function readFromBrowser(fieldLogical) {
+  if (!fieldLogical) { return; }
+  document.getElementById('read-field').value = fieldLogical;
+  readField();
 }
 
 // ---------------------------------------------------------------------------
@@ -1573,10 +1780,10 @@ function renderSolicitacao(result) {
 
   status.innerHTML = '<span class="ok">documentId resolvido</span>';
   var html =
-    '<div class="row"><span class="k">Solicitação</span><code>' + esc(result.numProcess) + '</code></div>' +
-    '<div class="row"><span class="k">documentId</span><code class="ok">' + renderValue(result.documentId) + '</code></div>';
+    '<div class="row"><span class="k">Solicitação</span>' + renderCopyable(result.numProcess) + '</div>' +
+    '<div class="row"><span class="k">documentId</span>' + renderCopyable(result.documentId, '<span class="ok">' + esc(result.documentId) + '</span>') + '</div>';
   if (result.cardIndexDocumentId && result.cardIndexDocumentId !== result.documentId) {
-    html += '<div class="row"><span class="k">cardIndex</span><code>' + renderValue(result.cardIndexDocumentId) + '</code></div>';
+    html += '<div class="row"><span class="k">cardIndex</span>' + renderCopyable(result.cardIndexDocumentId) + '</div>';
   }
   render('solicitacao-output', html);
 }
@@ -1713,6 +1920,26 @@ function applyDbSet() {
 }
 
 // ---------------------------------------------------------------------------
+// UI — Abas
+// ---------------------------------------------------------------------------
+
+var TAB_NAMES = ['ler', 'alterar', 'dump'];
+
+function switchTab(name) {
+  TAB_NAMES.forEach(function (t) {
+    var panel = document.getElementById('tab-' + t);
+    var btn = document.getElementById('tab-btn-' + t);
+    if (t === name) {
+      panel.hidden = false;
+      btn.classList.add('active');
+    } else {
+      panel.hidden = true;
+      btn.classList.remove('active');
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Wiring
 // ---------------------------------------------------------------------------
 
@@ -1723,9 +1950,32 @@ attachAutocomplete('read-field', 'read-field-ac');
 attachAutocomplete('set-field', 'set-field-ac');
 attachAutocomplete('dbset-field', 'dbset-field-ac');
 
+document.getElementById('tab-btn-ler').addEventListener('click', function () { switchTab('ler'); });
+document.getElementById('tab-btn-alterar').addEventListener('click', function () { switchTab('alterar'); });
+document.getElementById('tab-btn-dump').addEventListener('click', function () { switchTab('dump'); });
+
 document.getElementById('btn-read').addEventListener('click', readField);
 document.getElementById('read-field').addEventListener('keydown', function (e) {
   if (e.key === 'Enter') { readField(); }
+});
+
+// Browser de campos: filtro e cliques delegados nos containers estaveis.
+document.getElementById('field-browser-filter').addEventListener('input', renderFieldBrowser);
+document.getElementById('field-browser-body').addEventListener('click', function (e) {
+  if (!e.target.closest) { return; }
+
+  // Toggle de tabela pai-filho
+  var band = e.target.closest('[data-toggle-table]');
+  if (band) {
+    toggleBrowserTable(band.getAttribute('data-toggle-table'));
+    return;
+  }
+
+  // Acao de ler campo
+  var el = e.target.closest('[data-browse-read]');
+  if (el) {
+    readFromBrowser(el.getAttribute('data-browse-read'));
+  }
 });
 
 document.getElementById('btn-set').addEventListener('click', setFieldResolve);
@@ -1764,6 +2014,18 @@ document.getElementById('btn-read-history').addEventListener('click', function (
 document.getElementById('btn-set-history').addEventListener('click', function () { toggleHistory('set'); });
 document.getElementById('btn-dbset-history').addEventListener('click', function () { toggleHistory('dbset'); });
 
+// Delegacao: botoes de copiar inline (data-copy) sao criados dinamicamente em
+// toda saida. Um handler global resolve todos.
+document.addEventListener('click', function (e) {
+  if (!e.target.closest) { return; }
+  var copyBtn = e.target.closest('[data-copy]');
+  if (copyBtn) {
+    e.preventDefault();
+    copyWithFeedback(copyBtn.getAttribute('data-copy'), copyBtn);
+    return;
+  }
+});
+
 // Delegacao: os botoes de dentro do historico sao recriados a cada render, entao
 // nao da para prender listener neles um a um.
 document.addEventListener('click', function (e) {
@@ -1794,7 +2056,12 @@ document.addEventListener('click', function (e) {
 // Navegacao: a pagina nova tem outros campos — o indice do autocomplete morre.
 // O historico NAO e limpo: rever o que voce setou antes de recarregar a pagina e
 // justamente um dos usos.
-chrome.devtools.network.onNavigated.addListener(invalidateFieldIndex);
+chrome.devtools.network.onNavigated.addListener(function () {
+  invalidateFieldIndex();
+  browserFields = [];
+  browserExpandedTables = {};
+  loadFieldBrowser();
+});
 
 // Estado inicial do dump: tabela (com o vazio explicando o "Gerar dump") e a
 // textarea de JSON escondida.
@@ -1805,5 +2072,5 @@ document.getElementById('read-field').focus();
 // Resolve o documentId da solicitacao automaticamente ao abrir o painel.
 loadSolicitacao();
 
-// Aquece o indice para a primeira tecla ja vir com sugestao.
-ensureFieldIndex();
+// Carrega o browser de campos (que tambem aquece o indice para o autocomplete).
+loadFieldBrowser();
