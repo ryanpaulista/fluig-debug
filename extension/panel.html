@@ -697,6 +697,34 @@
         border-color: var(--teal);
         box-shadow: 0 0 0 3px var(--teal-ghost);
       }
+      /* Botão com ícone e texto (ações contextuais secundárias) */
+      .btn-icon-text {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        padding: 4px 10px;
+        color: var(--graphite);
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: var(--r-pill);
+        cursor: pointer;
+        transition: color 120ms, background-color 120ms, border-color 120ms;
+      }
+      .btn-icon-text:hover {
+        color: var(--teal);
+        background: var(--sunken);
+        border-color: var(--teal);
+      }
+      .btn-icon-text svg {
+        flex-shrink: 0;
+      }
+      .btn-icon-text.active {
+        color: var(--teal-text);
+        background: var(--teal);
+        border-color: var(--teal);
+      }
+
       /* Feedback visual de "copiado" — aplica via JS por 1.2s. */
       .btn-icon.copied {
         color: var(--ok);
@@ -811,9 +839,29 @@
         gap: 6px;
       }
       .browser-table-content {
-        padding-left: 12px;
+        padding-left: 8px;
         margin-bottom: 8px;
         border-left: 2px solid var(--line-soft);
+      }
+      .browser-table-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 4px 8px;
+      }
+      .browser-table-toolbar .chip {
+        font-size: 11px;
+        padding: 2px 8px;
+      }
+      .browser-row-header {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--teal);
+        padding: 6px 4px 2px;
+        margin-top: 4px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
       }
 
       /* Abas ---------------------------------------------------------------- */
@@ -898,6 +946,12 @@
             </svg>
             <input id="field-browser-filter" type="text" placeholder="filtrar campos da página" autocomplete="off" />
           </div>
+          <button id="btn-browser-reload" type="button" class="btn-icon" title="Recarregar lista de campos">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1.5 1.5v4.5h4.5"/>
+              <path d="M2.3 10a6 6 0 1 0 1.2-6.2L1.5 6"/>
+            </svg>
+          </button>
         </div>
         <div id="field-browser-body"></div>
       </div>
@@ -951,35 +1005,17 @@
     <section>
       <h2>Dump do estado</h2>
       <p class="muted">
-        Coleta de uma vez todos os campos e valores da página. Em
-        <strong>Tabela</strong>, campo a campo, com filtro e atalho para setar;
-        em <strong>JSON</strong>, o mesmo dump agrupado (tabelas pai-filho por
-        <code>___N</code>) mais os <code>console.log</code>/erros capturados
-        desde que o DevTools foi aberto — pronto para colar como contexto em
-        uma IA.
+        Coleta de uma vez todos os campos e valores da página agrupados em
+        <strong>JSON</strong> (tabelas pai-filho por <code>___N</code>) mais os
+        <code>console.log</code>/erros capturados desde que o DevTools foi aberto
+        — pronto para copiar ou colar como contexto em uma IA.
       </p>
-      <div class="toolbar">
-        <button id="btn-dump" type="button" class="primary">Gerar dump</button>
-        <div class="toolbar-group">
-          <button id="btn-dump-table" type="button" class="chip">Tabela</button>
-          <button id="btn-dump-json" type="button" class="chip">JSON</button>
-        </div>
+      <div class="toolbar" style="margin-bottom: 12px;">
+        <button id="btn-dump" type="button" class="primary">Gerar dump JSON</button>
         <button id="btn-copy-dump" type="button">Copiar JSON</button>
         <span id="dump-status" class="muted"></span>
       </div>
-      <div id="dump-table-view">
-        <div class="dump-filter-row">
-          <div class="search">
-            <svg class="search-ico" viewBox="0 0 16 16" aria-hidden="true">
-              <circle cx="7" cy="7" r="4.25" />
-              <path d="M10.3 10.3 14 14" />
-            </svg>
-            <input id="dump-filter" type="text" placeholder="filtrar por nome ou valor" autocomplete="off" />
-          </div>
-        </div>
-        <div id="dump-table" class="out"></div>
-      </div>
-      <textarea id="dump-json" readonly placeholder="O JSON aparece aqui após 'Gerar dump'."></textarea>
+      <textarea id="dump-json" readonly placeholder="O JSON aparece aqui após 'Gerar dump JSON'."></textarea>
     </section>
     </div>
 

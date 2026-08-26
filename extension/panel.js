@@ -51,6 +51,96 @@ var PAGE_HELPERS = [
   '    }',
   '    return acc;',
   '  }',
+  '  function uncollapseAncestors(node, jq, win) {',
+  '    if (!node) { return; }',
+  '    try {',
+  '      var curr = node.parentElement;',
+  '      while (curr && curr !== win.document.body) {',
+  '        // 1. Bootstrap Collapse / Fluig Panel Collapse (ex: #divCollapseIntegratedTimes)',
+  '        if (curr.classList && curr.classList.contains("collapse")) {',
+  '          var isCollapsed = !curr.classList.contains("in") && !curr.classList.contains("show") ||',
+  '                            curr.getAttribute("aria-expanded") === "false" ||',
+  '                            curr.style.height === "0px";',
+  '          if (isCollapsed) {',
+  '            // Forca abertura imediata sem esperar 350ms da transicao CSS do Bootstrap',
+  '            curr.classList.add("in", "show");',
+  '            curr.classList.remove("collapse", "collapsing");',
+  '            curr.setAttribute("aria-expanded", "true");',
+  '            curr.style.display = "block";',
+  '            curr.style.height = "auto";',
+  '            curr.style.visibility = "visible";',
+  '            curr.style.overflow = "visible";',
+  '',
+  '            if (curr.id) {',
+  '              var toggles = win.document.querySelectorAll(\'[data-target="#\' + curr.id + \'"], [href="#\' + curr.id + \'"]\');',
+  '              for (var t = 0; t < toggles.length; t++) {',
+  '                var toggle = toggles[t];',
+  '                toggle.setAttribute("aria-expanded", "true");',
+  '                toggle.classList.remove("collapsed");',
+  '                toggle.classList.add("up");',
+  '              }',
+  '            }',
+  '          }',
+  '        }',
+  '        // 2. Bootstrap Tab (aba fechada)',
+  '        if (curr.classList && curr.classList.contains("tab-pane")) {',
+  '          if (!curr.classList.contains("active")) {',
+  '            curr.classList.add("active", "in", "show");',
+  '            curr.style.display = "block";',
+  '            if (curr.id) {',
+  '              var tabLinks = win.document.querySelectorAll(\'a[href="#\' + curr.id + \'"], [data-target="#\' + curr.id + \'"]\');',
+  '              for (var tl = 0; tl < tabLinks.length; tl++) {',
+  '                tabLinks[tl].parentElement && tabLinks[tl].parentElement.classList.add("active");',
+  '              }',
+  '            }',
+  '          }',
+  '        }',
+  '        // 3. HTML5 <details>',
+  '        if (String(curr.tagName || "").toLowerCase() === "details") {',
+  '          curr.open = true;',
+  '        }',
+  '        curr = curr.parentElement;',
+  '      }',
+  '    } catch (e) {}',
+  '  }',
+  '  function isNodeVisible(node, win) {',
+  '    if (!node) { return false; }',
+  '    if (String(node.type || "").toLowerCase() === "hidden") { return false; }',
+  '    try {',
+  '      var w = win || window;',
+  '      var style = w.getComputedStyle ? w.getComputedStyle(node) : null;',
+  '      if (style && (style.visibility === "hidden" || style.opacity === "0")) {',
+  '        return false;',
+  '      }',
+  '      // Se estiver dentro da linha modelo oculta de pai-filho (tr detail="true" style="display:none")',
+  '      var tr = node.closest ? node.closest("tr") : null;',
+  '      if (tr && (tr.getAttribute("detail") === "true" || tr.style.display === "none")) {',
+  '        return false;',
+  '      }',
+  '      // Se o proprio no tiver display:none explicito',
+  '      if (node.style && node.style.display === "none") {',
+  '        return false;',
+  '      }',
+  '      var rect = node.getBoundingClientRect ? node.getBoundingClientRect() : null;',
+  '      if (rect && (rect.width > 0 || rect.height > 0)) {',
+  '        return true;',
+  '      }',
+  '      if (node.offsetParent) {',
+  '        return true;',
+  '      }',
+  '      // Se esta sem dimensao, checa se esta dentro de um .collapse, .tab-pane ou <details> ancestral',
+  '      var p = node.parentElement;',
+  '      while (p && p !== w.document.body) {',
+  '        if (p.classList && (p.classList.contains("collapse") || p.classList.contains("tab-pane") || p.tagName === "DETAILS")) {',
+  '          return true; // e localizavel abrindo o painel/aba',
+  '        }',
+  '        p = p.parentElement;',
+  '      }',
+  '      return false;',
+  '    } catch (e) {',
+  '      return true;',
+  '    }',
+  '  }',
   '  // Em modo VIEW / processo finalizado o Fluig troca inputs por <span> (mantendo',
   '  // name/id; o valor vira o texto). Estes helpers unificam a leitura.',
   '  function nodeIsControl(node) {',
@@ -116,21 +206,110 @@ function buildFindExpr(typed) {
     '      var table = null;',
     '      try { var t = node.closest ? node.closest("table[tablename]") : null; if (t) { table = t.getAttribute("tablename"); } } catch (e) {}',
     '      var disabled = /^_/.test(String(nm || "")) || /^_/.test(String(id || ""));',
+    '      var visible = isNodeVisible(node, w);',
     '      matches.push({',
     '        name: raw,',
     '        id: id,',
     '        value: String(v),',
     '        disabled: disabled,',
+    '        visible: visible,',
     '        child: rawChild,',
     '        table: table,',
     '        type: String(node.type || node.tagName || "").toLowerCase(),',
     '        frame: (w === window ? "top" : "iframe"),',
+    '        nodeIndex: j,',
     '        exact: (String(raw) === typed)',
     '      });',
     '    }',
     '  }',
     '',
     '  return { typed: typed, base: base, matches: matches, framesScanned: wins.length };',
+    '})()'
+  ].join('\n');
+}
+
+// Rola a pagina do Fluig ate o elemento e aplica um destaque pulsante de 2s.
+// Se o elemento estiver oculto (display:none, hidden etc), retorna { ok: false, visible: false }.
+function buildFocusElementExpr(rawName) {
+  var nameLit = JSON.stringify(String(rawName));
+  return [
+    '(function () {',
+    PAGE_HELPERS,
+    '  var targetName = ' + nameLit + ';',
+    '  var base = logical(targetName);',
+    '  var childMatch = String(targetName).match(/___(\\d+)$/);',
+    '  var wantChild = childMatch ? childMatch[1] : null;',
+    '  var wins = collectWindows(window, [], 0);',
+    '',
+    '  for (var i = 0; i < wins.length; i++) {',
+    '    var w = wins[i];',
+    '    var doc;',
+    '    try { doc = w.document; } catch (e) { continue; }',
+    '    var nodes;',
+    '    try { nodes = doc.querySelectorAll("input, select, textarea, span[name]"); } catch (e) { continue; }',
+    '    for (var j = 0; j < nodes.length; j++) {',
+    '      var node = nodes[j];',
+    '      var nm = node.getAttribute("name");',
+    '      var id = node.id || null;',
+    '      var raw = nm || id;',
+    '      if (!raw) { continue; }',
+    '      if (raw !== targetName && logical(raw) !== base) { continue; }',
+    '      if (wantChild !== null) {',
+    '        var c = String(raw).match(/___(\\d+)$/);',
+    '        if (!c || c[1] !== wantChild) { continue; }',
+    '      }',
+    '',
+    '      var jq = null;',
+    '      try { jq = w.jQuery || w.$ || null; } catch (e) {}',
+    '      uncollapseAncestors(node, jq, w);',
+    '',
+    '      var visible = isNodeVisible(node, w);',
+    '      if (!visible) {',
+    '        return { ok: false, visible: false, reason: "Elemento oculto no layout (hidden ou display:none)." };',
+    '      }',
+    '',
+    '      try {',
+    '        // Funcao interna para forcar scroll tanto no elemento quanto no frame/janela pai',
+    '        function doScroll() {',
+    '          try {',
+    '            node.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });',
+    '            if (typeof node.focus === "function") { try { node.focus({ preventScroll: true }); } catch (e) {} }',
+    '            // Se o elemento esta dentro de um iframe, rola o proprio iframe na janela pai tambem',
+    '            if (w !== window && w.frameElement) {',
+    '              try {',
+    '                w.frameElement.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });',
+    '              } catch (e) {}',
+    '            }',
+    '          } catch (e) {}',
+    '        }',
+    '',
+    '        // Passada imediata',
+    '        doScroll();',
+    '        // Passada secundaria apos o layout do navegador computar as novas dimensoes do painel aberto',
+    '        setTimeout(doScroll, 80);',
+    '        setTimeout(doScroll, 250);',
+    '',
+    '        // Aplica borda/halo de destaque temporario',
+    '        var prevOutline = node.style.outline;',
+    '        var prevBoxShadow = node.style.boxShadow;',
+    '        var prevTransition = node.style.transition;',
+    '        node.style.transition = "outline 200ms ease, box-shadow 200ms ease";',
+    '        node.style.outline = "3px solid #016a71";',
+    '        node.style.boxShadow = "0 0 12px rgba(1, 106, 113, 0.6)";',
+    '        setTimeout(function () {',
+    '          try {',
+    '            node.style.outline = prevOutline;',
+    '            node.style.boxShadow = prevBoxShadow;',
+    '            node.style.transition = prevTransition;',
+    '          } catch (e) {}',
+    '        }, 2200);',
+    '        return { ok: true, visible: true, frame: (w === window ? "top" : "iframe") };',
+    '      } catch (e) {',
+    '        return { ok: false, visible: true, reason: "Erro ao rolar: " + String(e) };',
+    '      }',
+    '    }',
+    '  }',
+    '  return { ok: false, visible: false, reason: "Elemento não encontrado no DOM." };',
     '})()'
   ].join('\n');
 }
@@ -252,7 +431,10 @@ function buildFieldIndexExpr() {
     '      var child = childMatch ? childMatch[1] : null;',
     '      var disabled = /^_/.test(String(nm || "")) || /^_/.test(String(id || ""));',
     '      var table = null;',
-    '      try { var t = node.closest ? node.closest("table[tablename]") : null; if (t) { table = t.getAttribute("tablename"); } } catch (e) {}',
+    '      try {',
+    '        var t = node.closest ? (node.closest("table[tablename]") || node.closest("table")) : null;',
+    '        if (t) { table = t.getAttribute("tablename") || t.id || null; }',
+    '      } catch (e) {}',
     '      var val = preview(readValue(node, jq));',
     '',
     '      var g = groups[lg];',
@@ -276,6 +458,14 @@ function buildFieldIndexExpr() {
     '    }',
     '  }',
     '',
+    '  // Preenche a tabela nas rows caso a tabela tenha sido descoberta posteriormente no grupo logico',
+    '  for (var rIdx = 0; rIdx < rows.length; rIdx++) {',
+    '    var item = rows[rIdx];',
+    '    if (!item.table && groups[item.logical] && groups[item.logical].table) {',
+    '      item.table = groups[item.logical].table;',
+    '    }',
+    '  }',
+    '',
     '  order.sort();',
     '  var fields = [];',
     '  for (var k = 0; k < order.length; k++) { fields.push(groups[order[k]]); }',
@@ -286,7 +476,7 @@ function buildFieldIndexExpr() {
     '',
     '  return {',
     '    fields: fields.slice(0, MAX_FIELDS),',
-    '    rows: rows.slice(0, MAX_ROWS),',
+    '    rows: rows,',
     '    fieldsTotal: fields.length,',
     '    rowsTotal: rows.length,',
     '    framesScanned: wins.length',
@@ -360,6 +550,13 @@ var COPY_SVG = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stro
   '<path d="M5 10.5H3.5a1.5 1.5 0 0 1-1.5-1.5v-6A1.5 1.5 0 0 1 3.5 1.5h6A1.5 1.5 0 0 1 11 3v1.5"/>' +
   '</svg>';
 
+// Inline SVG string for the target / focus icon
+var TARGET_SVG = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+  '<circle cx="8" cy="8" r="6"/>' +
+  '<circle cx="8" cy="8" r="2"/>' +
+  '<path d="M8 0.5v3M8 12.5v3M0.5 8h3M12.5 8h3"/>' +
+  '</svg>';
+
 // Copia texto e dá feedback visual no botão (troca o ícone por ✓ por 1.2s).
 // `btn` é o elemento que recebe a classe .copied; se null, só copia.
 function copyWithFeedback(text, btn) {
@@ -403,6 +600,7 @@ function renderValue(v) {
 function matchTags(m) {
   var tags = [];
   if (m.disabled) { tags.push('<span class="tag warn">desabilitado (_)</span>'); }
+  if (m.visible === false) { tags.push('<span class="tag">oculto / hidden</span>'); }
   if (m.child) { tags.push('<span class="tag">linha ' + esc(m.child) + '</span>'); }
   if (m.type === 'span') { tags.push('<span class="tag">somente leitura</span>'); }
   else if (m.type) { tags.push('<span class="tag">' + esc(m.type) + '</span>'); }
@@ -944,10 +1142,17 @@ function readField() {
         ' <span class="muted">(' + result.matches.length + ' ocorrência(s))</span></div>';
 
       result.matches.forEach(function (m) {
+        var focusBtn = m.visible !== false
+          ? '<button type="button" class="btn-icon-text" data-focus-elem="' + esc(m.name).replace(/"/g, '&quot;') + '" title="Rolar e destacar no formulário">' +
+              TARGET_SVG + '<span>Localizar no formulário</span>' +
+            '</button>'
+          : '<span class="muted" style="font-size:11px;">(campo oculto no formulário)</span>';
+
         html +=
           '<div class="match">' +
           '<div class="row"><span class="k">name</span>' + renderCopyable(m.name) + ' ' + matchTags(m) + '</div>' +
           '<div class="row"><span class="k">valor</span>' + renderCopyable(m.value) + '</div>' +
+          '<div class="row" style="margin-top:6px;">' + focusBtn + '</div>' +
           '</div>';
       });
 
@@ -1265,8 +1470,6 @@ function dumpFields() {
   var status = document.getElementById('dump-status');
   status.textContent = 'Coletando…';
   document.getElementById('dump-json').value = '';
-  dumpRows = [];
-  renderDumpTable();
 
   evalInPage(buildDumpExpr())
     .then(function (result) {
@@ -1275,9 +1478,7 @@ function dumpFields() {
         return;
       }
       var out = structureDump(result);
-      dumpRows = buildDumpRows(result);
       document.getElementById('dump-json').value = JSON.stringify(out, null, 2);
-      renderDumpTable();
       status.innerHTML = '<span class="ok">' + out.meta.fieldCount + ' campo(s), ' +
         out.meta.tableCount + ' tabela(s), ' + out.meta.logCount + ' log(s).</span>';
     })
@@ -1293,181 +1494,19 @@ function copyDump() {
     status.innerHTML = '<span class="muted">Gere o dump antes de copiar.</span>';
     return;
   }
-  // Na aba Tabela a textarea esta com display:none e nao da para selecionar.
-  // Na aba JSON seleciona a propria textarea, que ja serve de retorno visual.
+  ta.focus();
+  ta.select();
   var ok = false;
-  if (dumpView === 'json') {
-    ta.focus();
-    ta.select();
-    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
-  } else {
-    ok = copyText(ta.value);
-  }
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
   if (ok) {
-    status.innerHTML = '<span class="ok">Copiado para a área de transferência.</span>';
+    status.innerHTML = '<span class="ok">JSON copiado para a área de transferência.</span>';
   } else if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(ta.value)
-      .then(function () { status.innerHTML = '<span class="ok">Copiado.</span>'; })
+      .then(function () { status.innerHTML = '<span class="ok">JSON copiado.</span>'; })
       .catch(function () { status.innerHTML = '<span class="muted">Selecione o texto e use Ctrl+C.</span>'; });
   } else {
     status.innerHTML = '<span class="muted">Selecione o texto e use Ctrl+C.</span>';
   }
-}
-
-// ---------------------------------------------------------------------------
-// Dump — visao em tabela (CU-02)
-// ---------------------------------------------------------------------------
-//
-// A tabela e outra FORMA DE MOSTRAR o mesmo resultado do buildDumpExpr, nunca
-// uma segunda varredura: dois caminhos coletando o mesmo dado divergem na
-// primeira mudanca de regra (o que conta como campo, como le valor, etc).
-//
-// Uma linha por entrada CRUA, nao por campo logico: o mesmo campo repetido em
-// frames diferentes e cada linha de tabela pai-filho aparecem separados — que e
-// justamente o que se quer enxergar depurando. O agrupamento continua no JSON.
-
-var dumpRows = [];
-var dumpView = 'table';
-// Formulario Fluig grande passa facil de mil entradas, e montar tudo de uma vez
-// trava o painel. Renderiza ate um teto e manda refinar o filtro — mesma
-// preocupacao do MAX_SUGGESTIONS do autocomplete.
-var DUMP_RENDER_MAX = 300;
-
-function buildDumpRows(result) {
-  var rows = (result.entries || []).slice();
-  rows.sort(function (a, b) {
-    // Por nome logico: agrupa as linhas de um mesmo campo pai-filho, que e como
-    // se le uma tabela. Dentro do mesmo nome, ordem numerica da linha (___N).
-    var byName = String(a.name).localeCompare(String(b.name), 'pt-BR');
-    if (byName !== 0) { return byName; }
-    return Number(a.child || 0) - Number(b.child || 0);
-  });
-  // Indice fixado DEPOIS da ordenacao: os botoes referenciam a linha por indice,
-  // e filtrar nao pode remapear esse numero.
-  rows.forEach(function (r, i) { r.idx = i; });
-  return rows;
-}
-
-function filterDumpRows(term) {
-  var q = String(term || '').trim().toLowerCase();
-  if (!q) { return dumpRows; }
-  // Casa nome cru, nome logico e valor: procurar pelo valor que se ve na tela
-  // para descobrir de que campo ele veio e um dos usos principais.
-  return dumpRows.filter(function (r) {
-    return String(r.raw).toLowerCase().indexOf(q) >= 0 ||
-      String(r.name).toLowerCase().indexOf(q) >= 0 ||
-      String(r.value).toLowerCase().indexOf(q) >= 0;
-  });
-}
-
-// Mesmo vocabulario de tags do matchTags/suggestionTags, mais frame e tabela.
-function dumpRowTags(r) {
-  var tags = [];
-  if (r.disabled) { tags.push('<span class="tag warn">desabilitado (_)</span>'); }
-  if (r.child != null) { tags.push('<span class="tag">linha ' + esc(r.child) + '</span>'); }
-  if (r.table) { tags.push('<span class="tag">' + esc(r.table) + '</span>'); }
-  if (r.frame !== 'top') { tags.push('<span class="tag">iframe</span>'); }
-  if (r.type === 'span') { tags.push('<span class="tag">somente leitura</span>'); }
-  else if (r.type) { tags.push('<span class="tag">' + esc(r.type) + '</span>'); }
-  return tags.join(' ');
-}
-
-// So o indice numerico vai para atributo HTML: esc() nao escapa aspas, e nome de
-// campo vem da pagina. Quem precisa do nome busca em dumpRows[idx].
-function dumpRowHtml(r) {
-  return '<div class="dump-row">' +
-    '<div class="dump-name"><code>' + esc(r.raw) + '</code>' +
-    '<div class="dump-tags">' + dumpRowTags(r) + '</div></div>' +
-    '<div class="dump-val">' + renderValue(r.value) + '</div>' +
-    '<div class="dump-acts">' +
-    '<button type="button" data-dump-set="' + r.idx + '">Setar</button>' +
-    '<button type="button" data-dump-copy="' + r.idx + '">Copiar nome</button>' +
-    '</div>' +
-    '</div>';
-}
-
-function renderDumpTable() {
-  var box = document.getElementById('dump-table');
-  if (!dumpRows.length) {
-    box.innerHTML = '<span class="muted">Clique em “Gerar dump” para listar todos os campos da página.</span>';
-    return;
-  }
-
-  var filtered = filterDumpRows(document.getElementById('dump-filter').value);
-  if (!filtered.length) {
-    box.innerHTML = '<span class="muted">Nenhum campo casa com o filtro.</span>';
-    return;
-  }
-
-  var shown = filtered.slice(0, DUMP_RENDER_MAX);
-  var foot = shown.length < filtered.length
-    ? 'Mostrando ' + shown.length + ' de ' + filtered.length + ' campo(s) — refine o filtro para ver o resto.'
-    : filtered.length + ' campo(s).';
-
-  box.innerHTML = shown.map(dumpRowHtml).join('') +
-    '<div class="dump-foot muted">' + foot + '</div>';
-}
-
-function setDumpView(view) {
-  dumpView = view === 'json' ? 'json' : 'table';
-  var isTable = dumpView === 'table';
-  document.getElementById('dump-table-view').style.display = isTable ? '' : 'none';
-  document.getElementById('dump-json').style.display = isTable ? 'none' : '';
-  document.getElementById('btn-dump-table').classList.toggle('active', isTable);
-  document.getElementById('btn-dump-json').classList.toggle('active', !isTable);
-  if (isTable) { renderDumpTable(); }
-}
-
-// Leva o nome CRU (com o "_" de desabilitado e o "___N" da linha) para a secao
-// Setar campo: e a forma que o buildFindExpr resolve sem ambiguidade. NAO
-// dispara a resolucao — falta o usuario digitar o valor novo, e a alteracao
-// segue passando pela confirmacao obrigatoria.
-function setFromDump(idx) {
-  var r = dumpRows[idx];
-  if (!r) { return; }
-  var field = document.getElementById('set-field');
-  var value = document.getElementById('set-value');
-  field.value = r.raw;
-  value.value = '';
-  render('set-output', '<span class="muted">Campo <code>' + esc(r.raw) +
-    '</code> carregado do dump (valor atual: <code>' + renderValue(r.value) +
-    '</code>). Digite o novo valor e clique em Setar.</span>');
-  switchTab('alterar');
-  field.scrollIntoView({ block: 'center' });
-  value.focus();
-}
-
-// Copia um texto curto. O copyDump seleciona a propria textarea (o realce faz
-// parte do retorno visual); aqui nao ha elemento visivel, entao usa um efemero.
-function copyText(text) {
-  var ta = document.createElement('textarea');
-  ta.value = text;
-  ta.setAttribute('readonly', '');
-  ta.style.position = 'fixed';
-  ta.style.opacity = '0';
-  document.body.appendChild(ta);
-  ta.select();
-  var ok = false;
-  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
-  document.body.removeChild(ta);
-  return ok;
-}
-
-function copyFieldName(idx) {
-  var r = dumpRows[idx];
-  if (!r) { return; }
-  var status = document.getElementById('dump-status');
-  if (copyText(r.raw)) {
-    status.innerHTML = '<span class="ok">Nome copiado: <code>' + esc(r.raw) + '</code></span>';
-    return;
-  }
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(r.raw)
-      .then(function () { status.innerHTML = '<span class="ok">Nome copiado: <code>' + esc(r.raw) + '</code></span>'; })
-      .catch(function () { status.innerHTML = '<span class="muted">Não consegui copiar o nome.</span>'; });
-    return;
-  }
-  status.innerHTML = '<span class="muted">Não consegui copiar o nome.</span>';
 }
 
 // ---------------------------------------------------------------------------
@@ -1482,7 +1521,9 @@ function copyFieldName(idx) {
 // tabelas (expandindo automaticamente o que casar).
 
 var browserFields = [];
+var browserRows = [];
 var browserExpandedTables = {};
+var browserTableModes = {}; // tableName -> 'columns' | 'rows'
 
 function loadFieldBrowser() {
   var body = document.getElementById('field-browser-body');
@@ -1493,6 +1534,7 @@ function loadFieldBrowser() {
 
   ensureFieldIndex().then(function (index) {
     browserFields = (index && index.fields) || [];
+    browserRows = (index && index.rows) || [];
     renderFieldBrowser();
   });
 }
@@ -1505,7 +1547,7 @@ function browserFieldTags(f, insideTable) {
     else if (f.occurrences > 1) { tags.push('<span class="tag">' + f.occurrences + '×</span>'); }
     if (f.table) { tags.push('<span class="tag">' + esc(f.table) + '</span>'); }
   } else {
-    if (f.occurrences > 1) { tags.push('<span class="tag">' + f.occurrences + '×</span>'); }
+    if (f.occurrences > 1 && !f.child) { tags.push('<span class="tag">' + f.occurrences + '×</span>'); }
   }
   if (f.type === 'span') { tags.push('<span class="tag">somente leitura</span>'); }
   else if (f.type) { tags.push('<span class="tag">' + esc(f.type) + '</span>'); }
@@ -1513,12 +1555,17 @@ function browserFieldTags(f, insideTable) {
 }
 
 function browserRowHtml(f, insideTable) {
+  var displayName = f.name || f.logical;
+  var sendName = f.name || f.logical;
+  var escapedName = esc(sendName).replace(/"/g, '&quot;');
   return '<div class="dump-row">' +
-    '<div class="dump-name"><code>' + esc(f.logical) + '</code>' +
+    '<div class="dump-name"><code>' + esc(displayName) + '</code>' +
     '<div class="dump-tags">' + browserFieldTags(f, insideTable) + '</div></div>' +
     '<div class="dump-val">' + renderValue(f.value || '') + '</div>' +
     '<div class="dump-acts">' +
-    '<button type="button" data-browse-read="' + esc(f.logical).replace(/"/g, '&quot;') + '">Ler</button>' +
+    '<button type="button" data-browse-read="' + escapedName + '">Ler</button>' +
+    '<button type="button" data-browse-set="' + escapedName + '" data-val="' + esc(f.value || '').replace(/"/g, '&quot;') + '">Setar</button>' +
+    '<button type="button" data-browse-copy="' + escapedName + '">Copiar</button>' +
     '</div>' +
     '</div>';
 }
@@ -1537,13 +1584,13 @@ function renderFieldBrowser() {
 
   // Separa campos simples e agrupa tabelas pai-filho
   var simpleFields = [];
-  var tablesMap = {}; // tableName -> { name: string, rows: number, fields: [] }
+  var tablesMap = {}; // tableName -> { name: string, maxRows: 0, fields: [], rowsMap: {} }
 
   browserFields.forEach(function (f) {
     if (f.table || f.rowCount > 0) {
       var tName = f.table || 'Tabela pai-filho';
       if (!tablesMap[tName]) {
-        tablesMap[tName] = { name: tName, maxRows: 0, fields: [] };
+        tablesMap[tName] = { name: tName, maxRows: 0, fields: [], rowsMap: {} };
       }
       if (f.rowCount > tablesMap[tName].maxRows) {
         tablesMap[tName].maxRows = f.rowCount;
@@ -1552,6 +1599,27 @@ function renderFieldBrowser() {
     } else {
       simpleFields.push(f);
     }
+  });
+
+  // Agrupa as ocorrencias ___N por tabela e por linha
+  browserRows.forEach(function (r) {
+    var tName = r.table;
+    if (!tName) {
+      // Tenta achar pelo grupo de campos logicos
+      for (var tk in tablesMap) {
+        var hasCol = tablesMap[tk].fields.some(function (cf) { return cf.logical === r.logical; });
+        if (hasCol) { tName = tk; break; }
+      }
+    }
+    tName = tName || 'Tabela pai-filho';
+    if (!tablesMap[tName]) {
+      tablesMap[tName] = { name: tName, maxRows: 0, fields: [], rowsMap: {} };
+    }
+    var lineNum = r.child || '0';
+    if (!tablesMap[tName].rowsMap[lineNum]) {
+      tablesMap[tName].rowsMap[lineNum] = [];
+    }
+    tablesMap[tName].rowsMap[lineNum].push(r);
   });
 
   // Filtra
@@ -1576,11 +1644,35 @@ function renderFieldBrowser() {
         })
       : tbl.fields;
 
-    if (matchedFields.length > 0) {
+    // Filtro por linhas
+    var matchedRowsMap = {};
+    var hasMatchingRows = false;
+    var rowKeys = Object.keys(tbl.rowsMap).sort(function (a, b) { return Number(a) - Number(b); });
+    rowKeys.forEach(function (lk) {
+      var rItems = tbl.rowsMap[lk];
+      var filteredR = q
+        ? rItems.filter(function (r) {
+            return tName.toLowerCase().indexOf(q) >= 0 ||
+              r.name.toLowerCase().indexOf(q) >= 0 ||
+              r.logical.toLowerCase().indexOf(q) >= 0 ||
+              (r.value || '').toLowerCase().indexOf(q) >= 0;
+          })
+        : rItems;
+      if (filteredR.length > 0) {
+        matchedRowsMap[lk] = filteredR;
+        hasMatchingRows = true;
+      }
+    });
+
+    if (matchedFields.length > 0 || hasMatchingRows) {
+      var currentMode = browserTableModes[tName] || (tbl.maxRows > 0 ? 'rows' : 'columns');
       tablesRenderData.push({
         name: tName,
         maxRows: tbl.maxRows,
         fields: matchedFields,
+        rowsMap: matchedRowsMap,
+        rowKeys: rowKeys,
+        mode: currentMode,
         totalInTable: tbl.fields.length,
         // Se houver busca ativa, abre a tabela automaticamente para mostrar o resultado
         expanded: q ? true : !!browserExpandedTables[tName]
@@ -1596,13 +1688,7 @@ function renderFieldBrowser() {
 
   var html = '';
 
-  // 1. Campos simples
-  if (filteredSimple.length > 0) {
-    html += '<div class="browser-group-title">Campos simples (' + filteredSimple.length + ')</div>';
-    html += filteredSimple.map(function (f) { return browserRowHtml(f, false); }).join('');
-  }
-
-  // 2. Tabelas pai-filho
+  // 1. Tabelas pai-filho NO TOPO (melhor usabilidade e destaque)
   if (tablesRenderData.length > 0) {
     html += '<div class="browser-group-title">Tabelas pai-filho (' + tablesRenderData.length + ')</div>';
 
@@ -1618,10 +1704,41 @@ function renderFieldBrowser() {
 
       if (isExp) {
         html += '<div class="browser-table-content">';
-        html += tbl.fields.map(function (f) { return browserRowHtml(f, true); }).join('');
+        
+        // Toolbar de alternancia: Por Linha vs Por Coluna (so se tiver linhas)
+        if (tbl.maxRows > 0) {
+          html += '<div class="browser-table-toolbar">' +
+            '<span class="muted" style="font-size:11px; margin-right:4px;">Exibir por:</span>' +
+            '<button type="button" class="chip' + (tbl.mode === 'rows' ? ' active' : '') + '" data-tbl-mode="' + esc(tbl.name) + ':rows">Linhas (___N)</button>' +
+            '<button type="button" class="chip' + (tbl.mode === 'columns' ? ' active' : '') + '" data-tbl-mode="' + esc(tbl.name) + ':columns">Colunas (resumo)</button>' +
+            '</div>';
+        }
+
+        if (tbl.mode === 'rows' && tbl.maxRows > 0) {
+          // Renderiza agrupado por linha ___N
+          var shownRowKeys = Object.keys(tbl.rowsMap).sort(function (a, b) { return Number(a) - Number(b); });
+          if (!shownRowKeys.length) {
+            html += '<span class="muted" style="padding:6px;">Nenhuma linha encontrada.</span>';
+          } else {
+            shownRowKeys.forEach(function (lk) {
+              html += '<div class="browser-row-header">Linha ' + esc(lk) + '</div>';
+              html += tbl.rowsMap[lk].map(function (f) { return browserRowHtml(f, true); }).join('');
+            });
+          }
+        } else {
+          // Renderiza resumo por coluna logica
+          html += tbl.fields.map(function (f) { return browserRowHtml(f, true); }).join('');
+        }
+
         html += '</div>';
       }
     });
+  }
+
+  // 2. Campos simples abaixo
+  if (filteredSimple.length > 0) {
+    html += '<div class="browser-group-title">Campos simples (' + filteredSimple.length + ')</div>';
+    html += filteredSimple.map(function (f) { return browserRowHtml(f, false); }).join('');
   }
 
   var totalShown = filteredSimple.length + totalTableFields;
@@ -1635,10 +1752,73 @@ function toggleBrowserTable(tableName) {
   renderFieldBrowser();
 }
 
+function setBrowserTableMode(tableName, mode) {
+  browserTableModes[tableName] = mode;
+  renderFieldBrowser();
+}
+
 function readFromBrowser(fieldLogical) {
   if (!fieldLogical) { return; }
   document.getElementById('read-field').value = fieldLogical;
   readField();
+}
+
+function setFromBrowser(fieldLogical, curVal) {
+  if (!fieldLogical) { return; }
+  var field = document.getElementById('set-field');
+  var value = document.getElementById('set-value');
+  field.value = fieldLogical;
+  value.value = '';
+  render('set-output', '<span class="muted">Campo <code>' + esc(fieldLogical) +
+    '</code> carregado da listagem (valor atual: <code>' + renderValue(curVal || '') +
+    '</code>). Digite o novo valor e clique em Setar.</span>');
+  switchTab('alterar');
+  field.scrollIntoView({ block: 'center' });
+  value.focus();
+}
+
+function reloadFieldBrowser() {
+  invalidateFieldIndex();
+  browserFields = [];
+  loadFieldBrowser();
+}
+
+function focusElementInPage(rawName, btn) {
+  if (!rawName) { return; }
+  var prevHtml = btn ? btn.innerHTML : null;
+  if (btn) { btn.innerHTML = '<span>Localizando…</span>'; }
+
+  evalInPage(buildFocusElementExpr(rawName))
+    .then(function (res) {
+      if (btn) { btn.innerHTML = prevHtml; }
+      if (!res || !res.ok) {
+        if (res && res.visible === false) {
+          if (btn) {
+            btn.classList.add('danger');
+            btn.innerHTML = '<span>Campo oculto no formulário</span>';
+            setTimeout(function () {
+              btn.classList.remove('danger');
+              btn.innerHTML = prevHtml;
+            }, 2500);
+          }
+          return;
+        }
+        alert((res && res.reason) || 'Não foi possível localizar o elemento na página.');
+        return;
+      }
+      if (btn) {
+        btn.classList.add('active');
+        btn.innerHTML = '<span>✓ Localizado no formulário</span>';
+        setTimeout(function () {
+          btn.classList.remove('active');
+          btn.innerHTML = prevHtml;
+        }, 1800);
+      }
+    })
+    .catch(function (err) {
+      if (btn) { btn.innerHTML = prevHtml; }
+      alert('Erro ao localizar elemento: ' + JSON.stringify(err));
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -1961,6 +2141,7 @@ document.getElementById('read-field').addEventListener('keydown', function (e) {
 
 // Browser de campos: filtro e cliques delegados nos containers estaveis.
 document.getElementById('field-browser-filter').addEventListener('input', renderFieldBrowser);
+document.getElementById('btn-browser-reload').addEventListener('click', reloadFieldBrowser);
 document.getElementById('field-browser-body').addEventListener('click', function (e) {
   if (!e.target.closest) { return; }
 
@@ -1971,10 +2152,32 @@ document.getElementById('field-browser-body').addEventListener('click', function
     return;
   }
 
+  // Alternancia de modo da tabela (linhas vs colunas)
+  var modeBtn = e.target.closest('[data-tbl-mode]');
+  if (modeBtn) {
+    var parts = modeBtn.getAttribute('data-tbl-mode').split(':');
+    setBrowserTableMode(parts[0], parts[1]);
+    return;
+  }
+
   // Acao de ler campo
-  var el = e.target.closest('[data-browse-read]');
-  if (el) {
-    readFromBrowser(el.getAttribute('data-browse-read'));
+  var elRead = e.target.closest('[data-browse-read]');
+  if (elRead) {
+    readFromBrowser(elRead.getAttribute('data-browse-read'));
+    return;
+  }
+
+  // Acao de setar campo
+  var elSet = e.target.closest('[data-browse-set]');
+  if (elSet) {
+    setFromBrowser(elSet.getAttribute('data-browse-set'), elSet.getAttribute('data-val'));
+    return;
+  }
+
+  // Acao de copiar nome do campo
+  var elCopy = e.target.closest('[data-browse-copy]');
+  if (elCopy) {
+    copyWithFeedback(elCopy.getAttribute('data-browse-copy'), elCopy);
   }
 });
 
@@ -1985,23 +2188,6 @@ document.getElementById('set-value').addEventListener('keydown', function (e) {
 
 document.getElementById('btn-dump').addEventListener('click', dumpFields);
 document.getElementById('btn-copy-dump').addEventListener('click', copyDump);
-document.getElementById('btn-dump-table').addEventListener('click', function () { setDumpView('table'); });
-document.getElementById('btn-dump-json').addEventListener('click', function () { setDumpView('json'); });
-document.getElementById('dump-filter').addEventListener('input', renderDumpTable);
-
-// Delegacao escopada no container: as linhas sao recriadas a cada render/filtro,
-// mas o #dump-table em si e estavel.
-document.getElementById('dump-table').addEventListener('click', function (e) {
-  if (!e.target.closest) { return; }
-  var el = e.target.closest('[data-dump-set], [data-dump-copy]');
-  if (!el) { return; }
-
-  var toSet = el.getAttribute('data-dump-set');
-  if (toSet !== null) { setFromDump(Number(toSet)); return; }
-
-  var toCopy = el.getAttribute('data-dump-copy');
-  if (toCopy !== null) { copyFieldName(Number(toCopy)); }
-});
 
 document.getElementById('btn-reload-solicitacao').addEventListener('click', loadSolicitacao);
 
@@ -2022,6 +2208,12 @@ document.addEventListener('click', function (e) {
   if (copyBtn) {
     e.preventDefault();
     copyWithFeedback(copyBtn.getAttribute('data-copy'), copyBtn);
+    return;
+  }
+  var focusBtn = e.target.closest('[data-focus-elem]');
+  if (focusBtn) {
+    e.preventDefault();
+    focusElementInPage(focusBtn.getAttribute('data-focus-elem'), focusBtn);
     return;
   }
 });
@@ -2062,10 +2254,6 @@ chrome.devtools.network.onNavigated.addListener(function () {
   browserExpandedTables = {};
   loadFieldBrowser();
 });
-
-// Estado inicial do dump: tabela (com o vazio explicando o "Gerar dump") e a
-// textarea de JSON escondida.
-setDumpView('table');
 
 document.getElementById('read-field').focus();
 
