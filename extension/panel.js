@@ -557,23 +557,70 @@ var TARGET_SVG = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" st
   '<path d="M8 0.5v3M8 12.5v3M0.5 8h3M12.5 8h3"/>' +
   '</svg>';
 
-// Copia texto e dá feedback visual no botão (troca o ícone por ✓ por 1.2s).
-// `btn` é o elemento que recebe a classe .copied; se null, só copia.
-function copyWithFeedback(text, btn) {
-  var ok = copyText(text);
-  if (!ok && navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text)
-      .then(function () { flashCopied(btn); })
-      .catch(function () {});
-    return;
+// Copia um texto usando textarea efemera (compativel com DevTools panel)
+// e com fallback para navigator.clipboard se disponivel.
+function copyText(text) {
+  var str = String(text != null ? text : '');
+  var ok = false;
+  try {
+    var ta = document.createElement('textarea');
+    ta.value = str;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '0';
+    ta.style.left = '0';
+    ta.style.width = '2em';
+    ta.style.height = '2em';
+    ta.style.padding = '0';
+    ta.style.border = 'none';
+    ta.style.outline = 'none';
+    ta.style.boxShadow = 'none';
+    ta.style.background = 'transparent';
+    ta.style.opacity = '0.01';
+    ta.style.zIndex = '-1';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, str.length);
+    ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+  } catch (e) {
+    ok = false;
   }
-  if (ok) { flashCopied(btn); }
+  return ok;
+}
+
+// Copia texto e dá feedback visual no botão (troca o ícone ou texto por Copiado por 1.2s).
+function copyWithFeedback(text, btn) {
+  var str = String(text != null ? text : '');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(str)
+      .then(function () { flashCopied(btn); })
+      .catch(function () {
+        var ok = copyText(str);
+        if (ok) { flashCopied(btn); }
+      });
+  } else {
+    var ok = copyText(str);
+    if (ok) { flashCopied(btn); }
+  }
 }
 
 function flashCopied(btn) {
   if (!btn) { return; }
+  var prevText = null;
+  var isTextBtn = btn.classList.contains('btn-icon-text') || (!btn.classList.contains('btn-icon') && btn.tagName === 'BUTTON');
+  if (isTextBtn) {
+    prevText = btn.textContent;
+    btn.textContent = 'Copiado!';
+  }
   btn.classList.add('copied');
-  setTimeout(function () { btn.classList.remove('copied'); }, 1200);
+  setTimeout(function () {
+    btn.classList.remove('copied');
+    if (isTextBtn && prevText !== null) {
+      btn.textContent = prevText;
+    }
+  }, 1200);
 }
 
 // Gera o HTML de um valor copiável: code + botão de copiar inline.
@@ -608,6 +655,84 @@ function matchTags(m) {
 }
 
 // ---------------------------------------------------------------------------
+// Gerenciador de Undo / Redo para Textareas (.match-textarea, .dg-inspector-textarea)
+// ---------------------------------------------------------------------------
+
+var textareaHistory = {}; // elementId -> { stack: string[], index: number, initialValue: string, timer: null }
+
+function initTextareaHistory(el, initialValue) {
+  if (!el || !el.id) { return; }
+  var val = initialValue != null ? String(initialValue) : (el.value || '');
+  textareaHistory[el.id] = {
+    stack: [val],
+    index: 0,
+    initialValue: val,
+    timer: null
+  };
+}
+
+function recordTextareaSnapshot(el) {
+  if (!el || !el.id) { return; }
+  var state = textareaHistory[el.id];
+  if (!state) {
+    initTextareaHistory(el, el.value);
+    state = textareaHistory[el.id];
+  }
+  var curVal = el.value;
+  if (state.stack[state.index] === curVal) { return; }
+
+  // Descarta o histórico posterior caso esteja navegando no meio do stack
+  state.stack = state.stack.slice(0, state.index + 1);
+  state.stack.push(curVal);
+  if (state.stack.length > 50) {
+    state.stack.shift();
+  }
+  state.index = state.stack.length - 1;
+}
+
+function performUndo(el) {
+  if (!el || !el.id) { return false; }
+  var state = textareaHistory[el.id];
+  if (!state) {
+    initTextareaHistory(el, el.value);
+    return false;
+  }
+  if (state.stack[state.index] !== el.value) {
+    recordTextareaSnapshot(el);
+  }
+  if (state.index > 0) {
+    state.index--;
+    el.value = state.stack[state.index];
+    flashCopied(el);
+    return true;
+  }
+  return false;
+}
+
+function performRedo(el) {
+  if (!el || !el.id) { return false; }
+  var state = textareaHistory[el.id];
+  if (!state) { return false; }
+  if (state.index < state.stack.length - 1) {
+    state.index++;
+    el.value = state.stack[state.index];
+    flashCopied(el);
+    return true;
+  }
+  return false;
+}
+
+function performRevert(el) {
+  if (!el || !el.id) { return; }
+  var state = textareaHistory[el.id];
+  if (!state) { return; }
+  if (el.value !== state.initialValue) {
+    el.value = state.initialValue;
+    recordTextareaSnapshot(el);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // UI — Historico por secao
 // ---------------------------------------------------------------------------
 //
@@ -629,9 +754,21 @@ var historySeq = 0;
 
 var HISTORY_UI = {
   read: { box: 'read-history', button: 'btn-read-history' },
-  set: { box: 'set-history', button: 'btn-set-history' },
-  dbset: { box: 'dbset-history', button: 'btn-dbset-history' }
+  set: { box: 'read-history', button: 'btn-read-history' },
+  dbset: { box: 'read-history', button: 'btn-read-history' }
 };
+
+function formatErr(err) {
+  if (!err) { return 'erro desconhecido'; }
+  if (typeof err === 'string') { return err; }
+  if (err.message) { return err.message; }
+  if (err.description) { return err.description; }
+  try {
+    var s = JSON.stringify(err);
+    if (s && s !== '{}') { return s; }
+  } catch (e) {}
+  return String(err);
+}
 
 function hhmmss(date) {
   function pad(n) { return n < 10 ? '0' + n : String(n); }
@@ -640,6 +777,7 @@ function hhmmss(date) {
 
 function pushHistory(kind, entry) {
   var list = histories[kind];
+  if (!list) { list = histories[kind] = []; }
   entry.id = ++historySeq;
   entry.at = new Date();
   entry.repeat = 1;
@@ -664,23 +802,37 @@ function pushHistory(kind, entry) {
 
 function findHistoryEntry(kind, id) {
   var list = histories[kind];
+  if (!list) { return null; }
   for (var i = 0; i < list.length; i++) {
     if (list[i].id === id) { return list[i]; }
   }
   return null;
 }
 
-// Rotulo do botao com a contagem, para dar pista de que ha algo la dentro.
+// Rotulo do botao com a contagem unificada das acoes na sessao.
 function paintHistoryButton(kind) {
-  var btn = document.getElementById(HISTORY_UI[kind].button);
-  var n = histories[kind].length;
-  btn.textContent = n ? 'Histórico (' + n + ')' : 'Histórico';
+  var ui = HISTORY_UI[kind] || HISTORY_UI.read;
+  var btn = document.getElementById(ui.button);
+  if (!btn) { return; }
+  var total = (histories.read ? histories.read.length : 0) +
+              (histories.set ? histories.set.length : 0) +
+              (histories.dbset ? histories.dbset.length : 0);
+  btn.textContent = total ? 'Histórico (' + total + ')' : 'Histórico';
 }
 
 function historyItemHtml(kind, e) {
+  var kindTag = '';
+  if (kind === 'set') {
+    kindTag = ' <span class="tag warn">DOM</span>';
+  } else if (kind === 'dbset') {
+    kindTag = ' <span class="tag danger">Banco</span>';
+  } else if (kind === 'read') {
+    kindTag = ' <span class="tag">Leitura</span>';
+  }
+
   var head =
     '<div class="row"><span class="hist-time">' + hhmmss(e.at) + '</span>' +
-    '<code>' + esc(e.label) + '</code>' + (e.tags ? ' ' + e.tags : '') +
+    '<code>' + esc(e.label) + '</code>' + kindTag + (e.tags ? ' ' + e.tags : '') +
     (e.repeat > 1 ? ' <span class="tag">' + e.repeat + '×</span>' : '') + '</div>';
 
   var body = e.rows.map(function (r) {
@@ -700,29 +852,40 @@ function historyItemHtml(kind, e) {
 }
 
 function renderHistory(kind) {
-  paintHistoryButton(kind);
+  paintHistoryButton('read');
 
-  var box = document.getElementById(HISTORY_UI[kind].box);
-  // Fechado: nao gasta render. Reabrir chama renderHistory de novo.
-  if (box.style.display !== 'block') { return; }
+  var ui = HISTORY_UI[kind] || HISTORY_UI.read;
+  var box = document.getElementById(ui.box);
+  if (!box || box.style.display !== 'block') { return; }
 
-  var list = histories[kind];
+  var allEntries = [];
+  ['read', 'set', 'dbset'].forEach(function (k) {
+    (histories[k] || []).forEach(function (e) {
+      allEntries.push({ kind: k, entry: e });
+    });
+  });
+  allEntries.sort(function (a, b) { return b.entry.at - a.entry.at; });
+
   var head =
-    '<div class="hist-head"><strong>Histórico</strong> ' +
+    '<div class="hist-head"><strong>Histórico de Ações</strong> ' +
     '<span class="muted">só nesta sessão do DevTools</span>' +
-    (list.length ? '<button type="button" data-hist-clear="' + kind + '">Limpar</button>' : '') +
+    (allEntries.length ? '<button type="button" data-hist-clear="all">Limpar</button>' : '') +
     '</div>';
 
-  if (!list.length) {
+  if (!allEntries.length) {
     box.innerHTML = head + '<p class="muted">Nenhum registro ainda nesta sessão.</p>';
     return;
   }
 
-  box.innerHTML = head + list.map(function (e) { return historyItemHtml(kind, e); }).join('');
+  box.innerHTML = head + allEntries.map(function (item) {
+    return historyItemHtml(item.kind, item.entry);
+  }).join('');
 }
 
 function toggleHistory(kind) {
-  var box = document.getElementById(HISTORY_UI[kind].box);
+  var ui = HISTORY_UI[kind] || HISTORY_UI.read;
+  var box = document.getElementById(ui.box);
+  if (!box) { return; }
   var open = box.style.display === 'block';
   box.style.display = open ? 'none' : 'block';
   if (!open) { renderHistory(kind); }
@@ -1082,18 +1245,10 @@ function pickDomValue(matches) {
 function restoreFromHistory(kind, id) {
   var e = findHistoryEntry(kind, id);
   if (!e || !e.canRestore) { return; }
-
-  if (kind === 'set') {
-    document.getElementById('set-field').value = e.fieldName;
-    document.getElementById('set-value').value = e.oldValue;
-    setFieldResolve();
-    return;
-  }
-
-  if (kind === 'dbset') {
-    document.getElementById('dbset-field').value = e.fieldName;
-    document.getElementById('dbset-value').value = e.oldValue;
-    dbSetResolve();
+  var rf = document.getElementById('read-field');
+  if (rf && e.fieldName) {
+    rf.value = e.fieldName;
+    readField();
   }
 }
 
@@ -1141,18 +1296,32 @@ function readField() {
         '<div class="row"><span class="k">Campo</span><code>' + esc(result.typed) + '</code>' +
         ' <span class="muted">(' + result.matches.length + ' ocorrência(s))</span></div>';
 
-      result.matches.forEach(function (m) {
+      result.matches.forEach(function (m, idx) {
         var focusBtn = m.visible !== false
           ? '<button type="button" class="btn-icon-text" data-focus-elem="' + esc(m.name).replace(/"/g, '&quot;') + '" title="Rolar e destacar no formulário">' +
-              TARGET_SVG + '<span>Localizar no formulário</span>' +
+              TARGET_SVG + '<span>Localizar</span>' +
             '</button>'
-          : '<span class="muted" style="font-size:11px;">(campo oculto no formulário)</span>';
+          : '<span class="muted" style="font-size:11px;">(oculto)</span>';
+
+        var mEscName = esc(m.name).replace(/"/g, '&quot;');
+        var cardId = 'match-card-' + idx;
 
         html +=
-          '<div class="match">' +
-          '<div class="row"><span class="k">name</span>' + renderCopyable(m.name) + ' ' + matchTags(m) + '</div>' +
-          '<div class="row"><span class="k">valor</span>' + renderCopyable(m.value) + '</div>' +
-          '<div class="row" style="margin-top:6px;">' + focusBtn + '</div>' +
+          '<div class="match" id="' + cardId + '">' +
+          '<div class="match-editor-head">' +
+          '<div style="display:inline-flex; align-items:center; gap:4px; flex-wrap:wrap;">' +
+          '<span class="k" style="min-width:auto; margin-right:2px;">name</span><code>' + esc(m.name) + '</code>' +
+          '<button type="button" class="btn-icon" data-copy="' + mEscName + '" title="Copiar nome do campo">' + COPY_SVG + '</button> ' + matchTags(m) +
+          '</div>' +
+          '<div class="match-editor-acts">' +
+          '<button type="button" class="primary" data-match-apply-dom="' + mEscName + '" data-card-id="' + cardId + '" title="Aplica o valor no DOM">Setar DOM</button>' +
+          '<button type="button" class="primary" data-match-apply-db="' + mEscName + '" data-card-id="' + cardId + '" title="Grava direto no banco (dsSetCardValue)">Setar Banco</button>' +
+          focusBtn +
+          '<button type="button" data-match-copy-val="' + cardId + '" title="Copiar conteúdo do campo">Copiar Conteúdo</button>' +
+          '<button type="button" data-revert-ta="match-val-' + cardId + '" title="Reverter para o valor original do formulário (Ctrl+Z)">Reverter</button>' +
+          '</div></div>' +
+          '<textarea class="match-textarea" id="match-val-' + cardId + '" placeholder="(vazio)">' + esc(m.value || '') + '</textarea>' +
+          '<div class="match-feedback" id="match-status-' + cardId + '"></div>' +
           '</div>';
       });
 
@@ -1168,6 +1337,13 @@ function readField() {
       }
 
       render('read-output', html);
+
+      result.matches.forEach(function (m, idx) {
+        var cardId = 'match-card-' + idx;
+        var ta = document.getElementById('match-val-' + cardId);
+        if (ta) { initTextareaHistory(ta, m.value || ''); }
+      });
+
       recordRead(typed, result.matches);
 
       if (rowTarget) {
@@ -1403,7 +1579,26 @@ function buildDumpExpr() {
     '  var best = null;',
     '  for (var k = 0; k < perFrame.length; k++) { if (!best || perFrame[k].count > best.count) { best = perFrame[k]; } }',
     '',
-    '  return { entries: entries, logs: logs, capturedFrom: best ? best.url : null, framesScanned: wins.length };',
+    '  var wfInfo = null;',
+    '  for (var wIdx = 0; wIdx < wins.length; wIdx++) {',
+    '    var wv = null;',
+    '    try {',
+    '      if (wins[wIdx].ECM && wins[wIdx].ECM.workflowView) { wv = wins[wIdx].ECM.workflowView; }',
+    '      else if (wins[wIdx].parent && wins[wIdx].parent.ECM && wins[wIdx].parent.ECM.workflowView) { wv = wins[wIdx].parent.ECM.workflowView; }',
+    '      else if (wins[wIdx].top && wins[wIdx].top.ECM && wins[wIdx].top.ECM.workflowView) { wv = wins[wIdx].top.ECM.workflowView; }',
+    '    } catch (e) {}',
+    '    if (wv) {',
+    '      wfInfo = {',
+    '        formDescription: wv.formDescription ? String(wv.formDescription).trim() : null,',
+    '        formVersion: wv.formVersion ? String(wv.formVersion).trim() : null,',
+    '        sequence: wv.sequence ? String(wv.sequence).trim() : null,',
+    '        currentStateDescription: wv.currentStateDescription ? String(wv.currentStateDescription).trim() : null',
+    '      };',
+    '      break;',
+    '    }',
+    '  }',
+    '',
+    '  return { entries: entries, logs: logs, capturedFrom: best ? best.url : null, framesScanned: wins.length, workflowView: wfInfo };',
     '})()'
   ].join('\n');
 }
@@ -1453,6 +1648,7 @@ function structureDump(result) {
     meta: {
       capturedFrom: result.capturedFrom || null,
       framesScanned: result.framesScanned,
+      workflow: result.workflowView || undefined,
       fieldCount: Object.keys(fields).length,
       tableCount: Object.keys(tables).length,
       logCount: logs.length,
@@ -1523,7 +1719,8 @@ function copyDump() {
 var browserFields = [];
 var browserRows = [];
 var browserExpandedTables = {};
-var browserTableModes = {}; // tableName -> 'columns' | 'rows'
+var browserTableModes = {}; // tableName -> 'grid' | 'columns'
+var browserSelectedCells = {}; // tableName -> { rowIdx, colName, rawName, value, type, disabled }
 
 function loadFieldBrowser() {
   var body = document.getElementById('field-browser-body');
@@ -1558,16 +1755,105 @@ function browserRowHtml(f, insideTable) {
   var displayName = f.name || f.logical;
   var sendName = f.name || f.logical;
   var escapedName = esc(sendName).replace(/"/g, '&quot;');
+  var valEsc = esc(f.value || '').replace(/"/g, '&quot;');
   return '<div class="dump-row">' +
-    '<div class="dump-name"><code>' + esc(displayName) + '</code>' +
+    '<div class="dump-name"><div style="display:inline-flex; align-items:center; gap:4px;"><code>' + esc(displayName) + '</code>' +
+    '<button type="button" class="btn-icon" data-copy="' + escapedName + '" title="Copiar nome do campo">' + COPY_SVG + '</button></div>' +
     '<div class="dump-tags">' + browserFieldTags(f, insideTable) + '</div></div>' +
     '<div class="dump-val">' + renderValue(f.value || '') + '</div>' +
     '<div class="dump-acts">' +
-    '<button type="button" data-browse-read="' + escapedName + '">Ler</button>' +
-    '<button type="button" data-browse-set="' + escapedName + '" data-val="' + esc(f.value || '').replace(/"/g, '&quot;') + '">Setar</button>' +
-    '<button type="button" data-browse-copy="' + escapedName + '">Copiar</button>' +
+    '<button type="button" class="primary" data-browse-read="' + escapedName + '" title="Inspecionar e editar campo">Ler / Editar</button>' +
+    '<button type="button" data-copy="' + valEsc + '" title="Copiar conteúdo/valor do campo">Copiar Conteúdo</button>' +
     '</div>' +
     '</div>';
+}
+
+function renderDataGripGrid(tbl, matchedRowsMap, shownRowKeys) {
+  var tName = tbl.name;
+  var cols = tbl.fields.map(function (f) { return f.logical; });
+  // Remove duplicados de colunas preservando a ordem
+  var uniqueCols = [];
+  cols.forEach(function (c) { if (uniqueCols.indexOf(c) < 0) { uniqueCols.push(c); } });
+
+  var selected = browserSelectedCells[tName] || null;
+
+  var html = '<div class="dg-grid-wrap">';
+  html += '<div class="dg-scroll-pane">';
+  html += '<table class="dg-table">';
+  
+  // Cabeçalho da tabela
+  html += '<thead><tr>';
+  html += '<th class="dg-th-idx">#</th>';
+  uniqueCols.forEach(function (colName) {
+    var fMeta = tbl.fields.filter(function (f) { return f.logical === colName; })[0];
+    var badge = (fMeta && fMeta.type) ? '<span class="dg-col-badge">' + esc(fMeta.type) + '</span>' : '';
+    html += '<th><div class="dg-col-header" title="' + esc(colName) + '">' +
+      '<span class="dg-col-title">' + esc(colName) + '</span>' + badge +
+      '</div></th>';
+  });
+  html += '</tr></thead>';
+
+  // Linhas de dados
+  html += '<tbody>';
+  shownRowKeys.forEach(function (lk) {
+    var rList = matchedRowsMap[lk] || [];
+    var rowData = {};
+    rList.forEach(function (item) {
+      rowData[item.logical] = item;
+    });
+
+    html += '<tr>';
+    html += '<td class="dg-td-idx" title="Linha ' + esc(lk) + '">' + esc(lk) + '</td>';
+
+    uniqueCols.forEach(function (colName) {
+      var cellItem = rowData[colName];
+      var cellVal = cellItem ? cellItem.value : '';
+      var rawName = cellItem ? cellItem.name : (colName + '___' + lk);
+      var isEmpty = cellVal === '' || cellVal == null;
+      var isSelected = selected && selected.rowIdx === lk && selected.colName === colName;
+
+      html += '<td class="dg-cell' + (isSelected ? ' selected' : '') + (isEmpty ? ' empty' : '') + '" ' +
+        'data-dg-cell="' + esc(tName) + '" ' +
+        'data-dg-row="' + esc(lk) + '" ' +
+        'data-dg-col="' + esc(colName) + '" ' +
+        'data-dg-raw="' + esc(rawName) + '" ' +
+        'data-dg-type="' + esc(cellItem ? (cellItem.type || '') : '') + '" ' +
+        'data-dg-disabled="' + (cellItem && cellItem.disabled ? 'true' : 'false') + '" ' +
+        'title="Clique para inspecionar">';
+      html += isEmpty ? '(vazio)' : esc(cellVal);
+      html += '</td>';
+    });
+
+    html += '</tr>';
+  });
+  html += '</tbody>';
+  html += '</table>';
+  html += '</div>'; // .dg-scroll-pane
+
+  // Inspector inferior estilo DataGrip
+  html += '<div class="dg-inspector">';
+  if (selected) {
+    var rawEsc = esc(selected.rawName).replace(/"/g, '&quot;');
+    var tNameEsc = esc(tName).replace(/"/g, '&quot;');
+    html += '<div class="dg-inspector-head">' +
+      '<span class="dg-inspector-title" style="display:inline-flex; align-items:center; gap:4px;">Linha ' + esc(selected.rowIdx) + ' · <code>' + esc(selected.rawName) + '</code>' +
+      '<button type="button" class="btn-icon" data-copy="' + rawEsc + '" title="Copiar nome do campo">' + COPY_SVG + '</button></span>' +
+      '<div class="dg-inspector-acts">' +
+      '<button type="button" class="primary" data-dg-apply-dom="' + tNameEsc + '" title="Aplica o valor editado no DOM da página">Setar DOM</button>' +
+      '<button type="button" class="primary" data-dg-apply-db="' + tNameEsc + '" title="Grava o valor editado direto no banco (dsSetCardValue)">Setar Banco</button>' +
+      '<button type="button" data-dg-reload-cell="' + tNameEsc + '" title="Reler valor atual do campo">Ler</button>' +
+      '<button type="button" data-dg-copy-val="' + tNameEsc + '" title="Copiar conteúdo do campo">Copiar Conteúdo</button>' +
+      '<button type="button" data-revert-ta="dg-val-' + esc(tName) + '" title="Reverter para o valor original do formulário (Ctrl+Z)">Reverter</button>' +
+      '</div></div>';
+    html += '<textarea class="dg-inspector-textarea" id="dg-val-' + esc(tName) + '" placeholder="(vazio)">' + esc(selected.value || '') + '</textarea>';
+    html += '<div class="dg-inspector-feedback" id="dg-status-' + esc(tName) + '"></div>';
+  } else {
+    html += '<div class="dg-inspector-empty">Clique em uma célula acima para visualizar ou editar o valor diretamente aqui.</div>';
+  }
+  html += '</div>'; // .dg-inspector
+
+  html += '</div>'; // .dg-grid-wrap
+  return html;
 }
 
 function renderFieldBrowser() {
@@ -1665,7 +1951,7 @@ function renderFieldBrowser() {
     });
 
     if (matchedFields.length > 0 || hasMatchingRows) {
-      var currentMode = browserTableModes[tName] || (tbl.maxRows > 0 ? 'rows' : 'columns');
+      var currentMode = browserTableModes[tName] || (tbl.maxRows > 0 ? 'grid' : 'columns');
       tablesRenderData.push({
         name: tName,
         maxRows: tbl.maxRows,
@@ -1705,25 +1991,21 @@ function renderFieldBrowser() {
       if (isExp) {
         html += '<div class="browser-table-content">';
         
-        // Toolbar de alternancia: Por Linha vs Por Coluna (so se tiver linhas)
+        // Toolbar de alternancia: Grid (DataGrip) vs Colunas (resumo)
         if (tbl.maxRows > 0) {
           html += '<div class="browser-table-toolbar">' +
-            '<span class="muted" style="font-size:11px; margin-right:4px;">Exibir por:</span>' +
-            '<button type="button" class="chip' + (tbl.mode === 'rows' ? ' active' : '') + '" data-tbl-mode="' + esc(tbl.name) + ':rows">Linhas (___N)</button>' +
+            '<span class="muted" style="font-size:11px; margin-right:4px;">Exibir como:</span>' +
+            '<button type="button" class="chip' + (tbl.mode === 'grid' ? ' active' : '') + '" data-tbl-mode="' + esc(tbl.name) + ':grid">Tabela / Grid</button>' +
             '<button type="button" class="chip' + (tbl.mode === 'columns' ? ' active' : '') + '" data-tbl-mode="' + esc(tbl.name) + ':columns">Colunas (resumo)</button>' +
             '</div>';
         }
 
-        if (tbl.mode === 'rows' && tbl.maxRows > 0) {
-          // Renderiza agrupado por linha ___N
+        if (tbl.mode === 'grid' && tbl.maxRows > 0) {
           var shownRowKeys = Object.keys(tbl.rowsMap).sort(function (a, b) { return Number(a) - Number(b); });
           if (!shownRowKeys.length) {
             html += '<span class="muted" style="padding:6px;">Nenhuma linha encontrada.</span>';
           } else {
-            shownRowKeys.forEach(function (lk) {
-              html += '<div class="browser-row-header">Linha ' + esc(lk) + '</div>';
-              html += tbl.rowsMap[lk].map(function (f) { return browserRowHtml(f, true); }).join('');
-            });
+            html += renderDataGripGrid(tbl, tbl.rowsMap, shownRowKeys);
           }
         } else {
           // Renderiza resumo por coluna logica
@@ -1765,16 +2047,12 @@ function readFromBrowser(fieldLogical) {
 
 function setFromBrowser(fieldLogical, curVal) {
   if (!fieldLogical) { return; }
-  var field = document.getElementById('set-field');
-  var value = document.getElementById('set-value');
-  field.value = fieldLogical;
-  value.value = '';
-  render('set-output', '<span class="muted">Campo <code>' + esc(fieldLogical) +
-    '</code> carregado da listagem (valor atual: <code>' + renderValue(curVal || '') +
-    '</code>). Digite o novo valor e clique em Setar.</span>');
-  switchTab('alterar');
-  field.scrollIntoView({ block: 'center' });
-  value.focus();
+  var rf = document.getElementById('read-field');
+  if (rf) {
+    rf.value = fieldLogical;
+    readField();
+    rf.scrollIntoView({ block: 'center' });
+  }
 }
 
 function reloadFieldBrowser() {
@@ -1880,22 +2158,74 @@ var DATASET_HELPERS = [
   '    }',
   '    return null;',
   '  }',
-  '  // documentId da solicitacao: workflowProcess -> cardDocumentId.',
+  '  // documentId da solicitacao: workflowProcess -> cardDocumentId + metadados workflowView.',
   '  function resolveDocId(wins) {',
   '    var numProcess = findNumProcess(wins);',
   '    if (!numProcess) { return { ok: false, stage: "url", message: "Número da solicitação não encontrado na URL (nenhum parâmetro *processInstanceId). Abra a extensão sobre uma solicitação de workflow." }; }',
+  '',
+  '    // Tenta obter metadados do ECM.workflowView através dos frames',
+  '    var wfInfo = { formDescription: null, formVersion: null, sequence: null, currentStateDescription: null };',
+  '    for (var wIdx = 0; wIdx < wins.length; wIdx++) {',
+  '      var wObj = wins[wIdx];',
+  '      var wv = null;',
+  '      try {',
+  '        if (wObj.ECM && wObj.ECM.workflowView) { wv = wObj.ECM.workflowView; }',
+  '        else if (wObj.parent && wObj.parent.ECM && wObj.parent.ECM.workflowView) { wv = wObj.parent.ECM.workflowView; }',
+  '        else if (wObj.top && wObj.top.ECM && wObj.top.ECM.workflowView) { wv = wObj.top.ECM.workflowView; }',
+  '      } catch (e) {}',
+  '',
+  '      if (wv) {',
+  '        if (wv.formDescription != null && wfInfo.formDescription == null) { wfInfo.formDescription = String(wv.formDescription).trim(); }',
+  '        if (wv.formVersion != null && wfInfo.formVersion == null) { wfInfo.formVersion = String(wv.formVersion).trim(); }',
+  '        if (wv.sequence != null && wfInfo.sequence == null) { wfInfo.sequence = String(wv.sequence).trim(); }',
+  '        if (wv.currentStateDescription != null && wfInfo.currentStateDescription == null) { wfInfo.currentStateDescription = String(wv.currentStateDescription).trim(); }',
+  '        if (wfInfo.formDescription || wfInfo.sequence) { break; }',
+  '      }',
+  '    }',
+  '',
   '    var dsWin = findDatasetWin(wins);',
-  '    if (!dsWin) { return { ok: false, stage: "dataset", numProcess: numProcess, message: "DatasetFactory não disponível no client-side (formulário ainda carregando?). Tente Recarregar." }; }',
+  '    if (!dsWin) {',
+  '      return {',
+  '        ok: false,',
+  '        stage: "dataset",',
+  '        numProcess: numProcess,',
+  '        workflowView: wfInfo,',
+  '        message: "DatasetFactory não disponível no client-side (formulário ainda carregando?). Tente Recarregar."',
+  '      };',
+  '    }',
   '    try {',
   '      var DF = dsWin.DatasetFactory, CT = dsWin.ConstraintType;',
   '      var c1 = DF.createConstraint("workflowProcessPK.processInstanceId", numProcess, numProcess, CT.MUST);',
   '      var c4 = DF.createConstraint("sqlLimit", "300", "300", CT.MUST);',
   '      var dataset = DF.getDataset("workflowProcess", ["cardIndexDocumentId", "cardDocumentId"], [c1, c4], null);',
   '      var values = (dataset && dataset.values) ? dataset.values : [];',
-  '      if (!values.length) { return { ok: false, stage: "empty", numProcess: numProcess, message: "Consulta ao workflowProcess retornou vazio para a solicitação " + numProcess + "." }; }',
+  '      if (!values.length) {',
+  '        return {',
+  '          ok: false,',
+  '          stage: "empty",',
+  '          numProcess: numProcess,',
+  '          workflowView: wfInfo,',
+  '          message: "Consulta ao workflowProcess retornou vazio para a solicitação " + numProcess + "."',
+  '        };',
+  '      }',
   '      var row = values[0];',
-  '      return { ok: true, numProcess: numProcess, documentId: (row.cardDocumentId != null ? String(row.cardDocumentId) : null), cardIndexDocumentId: (row.cardIndexDocumentId != null ? String(row.cardIndexDocumentId) : null), frame: (dsWin === window ? "top" : "iframe") };',
-  '    } catch (e) { return { ok: false, stage: "query", numProcess: numProcess, message: "Erro na consulta ao dataset: " + (e && e.message ? e.message : String(e)) }; }',
+  '      return {',
+  '        ok: true,',
+  '        numProcess: numProcess,',
+  '        documentId: (row.cardDocumentId != null ? String(row.cardDocumentId) : null),',
+  '        cardIndexDocumentId: (row.cardIndexDocumentId != null ? String(row.cardIndexDocumentId) : null),',
+  '        workflowView: wfInfo,',
+  '        frame: (dsWin === window ? "top" : "iframe")',
+  '      };',
+  '    } catch (e) {',
+  '      return {',
+  '        ok: false,',
+  '        stage: "query",',
+  '        numProcess: numProcess,',
+  '        workflowView: wfInfo,',
+  '        message: "Erro na consulta ao dataset: " + (e && e.message ? e.message : String(e))',
+  '      };',
+  '    }',
   '  }'
 ].join('\n');
 
@@ -1965,6 +2295,32 @@ function renderSolicitacao(result) {
   if (result.cardIndexDocumentId && result.cardIndexDocumentId !== result.documentId) {
     html += '<div class="row"><span class="k">cardIndex</span>' + renderCopyable(result.cardIndexDocumentId) + '</div>';
   }
+
+  // Metadados do workflowView (Formulário e Atividade Atual)
+  var wv = result.workflowView || {};
+  if (wv.formDescription) {
+    var formLabel = esc(wv.formDescription);
+    var formEsc = '<code>' + formLabel + '</code>';
+    if (wv.formVersion) {
+      formEsc += ' <span class="tag">v. ' + esc(wv.formVersion) + '</span>';
+    }
+    html += '<div class="row"><span class="k">Formulário</span>' + renderCopyable(wv.formDescription, formEsc) + '</div>';
+  } else if (wv.formVersion) {
+    html += '<div class="row"><span class="k">Versão form</span>' + renderCopyable(wv.formVersion) + '</div>';
+  }
+
+  if (wv.sequence || wv.currentStateDescription) {
+    var ativText = '';
+    if (wv.sequence && wv.currentStateDescription) {
+      ativText = wv.sequence + ' - ' + wv.currentStateDescription;
+    } else if (wv.sequence) {
+      ativText = wv.sequence;
+    } else {
+      ativText = wv.currentStateDescription;
+    }
+    html += '<div class="row"><span class="k">Atividade</span>' + renderCopyable(ativText) + '</div>';
+  }
+
   render('solicitacao-output', html);
 }
 
@@ -2103,12 +2459,13 @@ function applyDbSet() {
 // UI — Abas
 // ---------------------------------------------------------------------------
 
-var TAB_NAMES = ['ler', 'alterar', 'dump'];
+var TAB_NAMES = ['campos', 'dump'];
 
 function switchTab(name) {
   TAB_NAMES.forEach(function (t) {
     var panel = document.getElementById('tab-' + t);
     var btn = document.getElementById('tab-btn-' + t);
+    if (!panel || !btn) { return; }
     if (t === name) {
       panel.hidden = false;
       btn.classList.add('active');
@@ -2127,16 +2484,81 @@ function switchTab(name) {
 // elemento dispara na ordem de registro, e o dropdown precisa poder consumir o
 // Enter (escolher a sugestao) sem que o Ler/Setar rode junto.
 attachAutocomplete('read-field', 'read-field-ac');
-attachAutocomplete('set-field', 'set-field-ac');
-attachAutocomplete('dbset-field', 'dbset-field-ac');
 
-document.getElementById('tab-btn-ler').addEventListener('click', function () { switchTab('ler'); });
-document.getElementById('tab-btn-alterar').addEventListener('click', function () { switchTab('alterar'); });
-document.getElementById('tab-btn-dump').addEventListener('click', function () { switchTab('dump'); });
+var tabBtnCampos = document.getElementById('tab-btn-campos');
+if (tabBtnCampos) { tabBtnCampos.addEventListener('click', function () { switchTab('campos'); }); }
+
+var tabBtnDump = document.getElementById('tab-btn-dump');
+if (tabBtnDump) { tabBtnDump.addEventListener('click', function () { switchTab('dump'); }); }
 
 document.getElementById('btn-read').addEventListener('click', readField);
 document.getElementById('read-field').addEventListener('keydown', function (e) {
   if (e.key === 'Enter') { readField(); }
+});
+
+// Delegacao em read-output para acoes de aplicar DOM e Banco nos cards de busca
+document.getElementById('read-output').addEventListener('click', function (e) {
+  if (!e.target.closest) { return; }
+
+  // Setar DOM no card de busca
+  var matchApplyDom = e.target.closest('[data-match-apply-dom]');
+  if (matchApplyDom) {
+    var rawName = matchApplyDom.getAttribute('data-match-apply-dom');
+    var cardId = matchApplyDom.getAttribute('data-card-id');
+    var ta = document.getElementById('match-val-' + cardId);
+    var statusEl = document.getElementById('match-status-' + cardId);
+    var newVal = ta ? ta.value : '';
+
+    if (statusEl) { statusEl.innerHTML = '<span class="muted">Aplicando no DOM…</span>'; }
+
+    evalInPage(buildSetExpr(rawName, newVal))
+      .then(function (res) {
+        if (!res || res.setCount === 0) {
+          if (statusEl) { statusEl.innerHTML = '<span class="err">Elemento ' + esc(rawName) + ' não encontrado no DOM.</span>'; }
+          return;
+        }
+        var readBackVal = res.readBack != null ? res.readBack : newVal;
+        recordSet(rawName, '', readBackVal, { name: rawName });
+        if (statusEl) { statusEl.innerHTML = '<span class="ok">✓ Valor aplicado no DOM (' + esc(res.setCount) + ' elemento(s))!</span>'; }
+      })
+      .catch(function (err) {
+        if (statusEl) { statusEl.innerHTML = '<span class="err">Erro: ' + esc(formatErr(err)) + '</span>'; }
+      });
+    return;
+  }
+
+  // Setar Banco no card de busca
+  var matchApplyDb = e.target.closest('[data-match-apply-db]');
+  if (matchApplyDb) {
+    var rawName = matchApplyDb.getAttribute('data-match-apply-db');
+    var cardId = matchApplyDb.getAttribute('data-card-id');
+    var ta = document.getElementById('match-val-' + cardId);
+    var statusEl = document.getElementById('match-status-' + cardId);
+    var newVal = ta ? ta.value : '';
+
+    if (statusEl) { statusEl.innerHTML = '<span class="muted">Resolvendo documentId e gravando no banco…</span>'; }
+
+    evalInPage(buildDocumentIdExpr())
+      .then(function (docRes) {
+        if (!docRes || !docRes.ok || !docRes.documentId) {
+          if (statusEl) { statusEl.innerHTML = '<span class="err">Não foi possível resolver o documentId da solicitação.</span>'; }
+          return;
+        }
+        return evalInPage(buildDbSetExpr(docRes.documentId, rawName, newVal))
+          .then(function (dbRes) {
+            if (!dbRes || !dbRes.ok) {
+              if (statusEl) { statusEl.innerHTML = '<span class="err">Falha ao gravar no banco: ' + esc((dbRes && dbRes.message) || 'sem retorno') + '</span>'; }
+              return;
+            }
+            recordDbSet(rawName, docRes.documentId, '', newVal);
+            if (statusEl) { statusEl.innerHTML = '<span class="ok">✓ Gravado no banco (dsSetCardValue)! Recarregue o formulário para ver no DOM.</span>'; }
+          });
+      })
+      .catch(function (err) {
+        if (statusEl) { statusEl.innerHTML = '<span class="err">Erro: ' + esc(formatErr(err)) + '</span>'; }
+      });
+    return;
+  }
 });
 
 // Browser de campos: filtro e cliques delegados nos containers estaveis.
@@ -2160,30 +2582,171 @@ document.getElementById('field-browser-body').addEventListener('click', function
     return;
   }
 
-  // Acao de ler campo
+  // Selecao de celula no DataGrid (estilo DataGrip)
+  var elCell = e.target.closest('[data-dg-cell]');
+  if (elCell) {
+    var tName = elCell.getAttribute('data-dg-cell');
+    var rowIdx = elCell.getAttribute('data-dg-row');
+    var colName = elCell.getAttribute('data-dg-col');
+    var rawName = elCell.getAttribute('data-dg-raw');
+    var cellType = elCell.getAttribute('data-dg-type');
+    var cellDisabled = elCell.getAttribute('data-dg-disabled') === 'true';
+
+    // Encontra o valor real indexado
+    var foundVal = '';
+    for (var bi = 0; bi < browserRows.length; bi++) {
+      var br = browserRows[bi];
+      if (br.name === rawName || (br.child === rowIdx && br.logical === colName)) {
+        foundVal = br.value;
+        break;
+      }
+    }
+
+    browserSelectedCells[tName] = {
+      rowIdx: rowIdx,
+      colName: colName,
+      rawName: rawName,
+      value: foundVal,
+      type: cellType,
+      disabled: cellDisabled
+    };
+    renderFieldBrowser();
+    var ta = document.getElementById('dg-val-' + tName);
+    if (ta) { initTextareaHistory(ta, foundVal); }
+    return;
+  }
+
+  // Acao: Setar DOM direto do Inspector da celula
+  var elApplyDom = e.target.closest('[data-dg-apply-dom]');
+  if (elApplyDom) {
+    var tName = elApplyDom.getAttribute('data-dg-apply-dom');
+    var selected = browserSelectedCells[tName];
+    if (!selected) { return; }
+    var ta = document.getElementById('dg-val-' + tName);
+    var newVal = ta ? ta.value : '';
+    var statusEl = document.getElementById('dg-status-' + tName);
+    if (statusEl) { statusEl.innerHTML = '<span class="muted">Aplicando no DOM…</span>'; }
+
+    evalInPage(buildSetExpr(selected.rawName, newVal))
+      .then(function (res) {
+        if (!res || res.setCount === 0) {
+          if (statusEl) { statusEl.innerHTML = '<span class="err">Elemento ' + esc(selected.rawName) + ' não encontrado no DOM.</span>'; }
+          return;
+        }
+        var readBackVal = res.readBack != null ? res.readBack : newVal;
+        selected.value = readBackVal;
+        recordSet(selected.rawName, selected.value, readBackVal, { name: selected.rawName, type: selected.type, disabled: selected.disabled });
+        // Atualiza o valor no index em memoria
+        for (var bi = 0; bi < browserRows.length; bi++) {
+          if (browserRows[bi].name === selected.rawName || (browserRows[bi].child === selected.rowIdx && browserRows[bi].logical === selected.colName)) {
+            browserRows[bi].value = readBackVal;
+            break;
+          }
+        }
+        renderFieldBrowser();
+        var newStatus = document.getElementById('dg-status-' + tName);
+        if (newStatus) { newStatus.innerHTML = '<span class="ok">✓ Valor aplicado no DOM com sucesso!</span>'; }
+      })
+      .catch(function (err) {
+        if (statusEl) { statusEl.innerHTML = '<span class="err">Erro: ' + esc(formatErr(err)) + '</span>'; }
+      });
+    return;
+  }
+
+  // Acao: Setar Banco direto do Inspector da celula
+  var elApplyDb = e.target.closest('[data-dg-apply-db]');
+  if (elApplyDb) {
+    var tName = elApplyDb.getAttribute('data-dg-apply-db');
+    var selected = browserSelectedCells[tName];
+    if (!selected) { return; }
+    var ta = document.getElementById('dg-val-' + tName);
+    var newVal = ta ? ta.value : '';
+    var statusEl = document.getElementById('dg-status-' + tName);
+    if (statusEl) { statusEl.innerHTML = '<span class="muted">Resolvendo documentId e gravando no banco…</span>'; }
+
+    evalInPage(buildDocumentIdExpr())
+      .then(function (docRes) {
+        if (!docRes || !docRes.ok || !docRes.documentId) {
+          if (statusEl) { statusEl.innerHTML = '<span class="err">Não foi possível resolver o documentId da solicitação.</span>'; }
+          return;
+        }
+        return evalInPage(buildDbSetExpr(docRes.documentId, selected.rawName, newVal))
+          .then(function (dbRes) {
+            if (!dbRes || !dbRes.ok) {
+              if (statusEl) { statusEl.innerHTML = '<span class="err">Falha ao gravar no banco: ' + esc((dbRes && dbRes.message) || 'sem retorno') + '</span>'; }
+              return;
+            }
+            recordDbSet(selected.rawName, docRes.documentId, selected.value, newVal);
+            selected.value = newVal;
+            for (var bi = 0; bi < browserRows.length; bi++) {
+              if (browserRows[bi].name === selected.rawName || (browserRows[bi].child === selected.rowIdx && browserRows[bi].logical === selected.colName)) {
+                browserRows[bi].value = newVal;
+                break;
+              }
+            }
+            renderFieldBrowser();
+            var newStatus = document.getElementById('dg-status-' + tName);
+            if (newStatus) { newStatus.innerHTML = '<span class="ok">✓ Gravado no banco (dsSetCardValue)! Recarregue o form para ver no DOM.</span>'; }
+          });
+      })
+      .catch(function (err) {
+        if (statusEl) { statusEl.innerHTML = '<span class="err">Erro: ' + esc(formatErr(err)) + '</span>'; }
+      });
+    return;
+  }
+
+  // Acao: Reler celula
+  var elReloadCell = e.target.closest('[data-dg-reload-cell]');
+  if (elReloadCell) {
+    var tName = elReloadCell.getAttribute('data-dg-reload-cell');
+    var selected = browserSelectedCells[tName];
+    if (!selected) { return; }
+    var statusEl = document.getElementById('dg-status-' + tName);
+    if (statusEl) { statusEl.innerHTML = '<span class="muted">Lendo valor atual…</span>'; }
+
+    evalInPage(buildFindExpr(selected.rawName))
+      .then(function (findRes) {
+        var matches = (findRes && findRes.matches) || [];
+        if (matches.length > 0) {
+          selected.value = matches[0].value;
+          for (var bi = 0; bi < browserRows.length; bi++) {
+            if (browserRows[bi].name === selected.rawName || (browserRows[bi].child === selected.rowIdx && browserRows[bi].logical === selected.colName)) {
+              browserRows[bi].value = matches[0].value;
+              break;
+            }
+          }
+          renderFieldBrowser();
+          var newStatus = document.getElementById('dg-status-' + tName);
+          if (newStatus) { newStatus.innerHTML = '<span class="ok">✓ Valor atualizado do DOM.</span>'; }
+        } else {
+          if (statusEl) { statusEl.innerHTML = '<span class="err">Campo não encontrado na página.</span>'; }
+        }
+      })
+      .catch(function (err) {
+        if (statusEl) { statusEl.innerHTML = '<span class="err">Erro ao ler: ' + esc(formatErr(err)) + '</span>'; }
+      });
+    return;
+  }
+
+  // Acao de ler campo (fora do grid)
   var elRead = e.target.closest('[data-browse-read]');
   if (elRead) {
     readFromBrowser(elRead.getAttribute('data-browse-read'));
     return;
   }
 
-  // Acao de setar campo
+  // Acao de setar campo (fora do grid)
   var elSet = e.target.closest('[data-browse-set]');
   if (elSet) {
     setFromBrowser(elSet.getAttribute('data-browse-set'), elSet.getAttribute('data-val'));
     return;
   }
 
-  // Acao de copiar nome do campo
+  // Acao de copiar nome do campo ou valor
   var elCopy = e.target.closest('[data-browse-copy]');
   if (elCopy) {
     copyWithFeedback(elCopy.getAttribute('data-browse-copy'), elCopy);
   }
-});
-
-document.getElementById('btn-set').addEventListener('click', setFieldResolve);
-document.getElementById('set-value').addEventListener('keydown', function (e) {
-  if (e.key === 'Enter') { setFieldResolve(); }
 });
 
 document.getElementById('btn-dump').addEventListener('click', dumpFields);
@@ -2191,29 +2754,101 @@ document.getElementById('btn-copy-dump').addEventListener('click', copyDump);
 
 document.getElementById('btn-reload-solicitacao').addEventListener('click', loadSolicitacao);
 
-document.getElementById('btn-dbset').addEventListener('click', dbSetResolve);
-document.getElementById('dbset-value').addEventListener('keydown', function (e) {
-  if (e.key === 'Enter') { dbSetResolve(); }
-});
-
 document.getElementById('btn-read-history').addEventListener('click', function () { toggleHistory('read'); });
-document.getElementById('btn-set-history').addEventListener('click', function () { toggleHistory('set'); });
-document.getElementById('btn-dbset-history').addEventListener('click', function () { toggleHistory('dbset'); });
 
-// Delegacao: botoes de copiar inline (data-copy) sao criados dinamicamente em
-// toda saida. Um handler global resolve todos.
+// Delegacao: botoes de copiar inline, localizar e reverter sao criados dinamicamente
 document.addEventListener('click', function (e) {
   if (!e.target.closest) { return; }
-  var copyBtn = e.target.closest('[data-copy]');
+
+  // Copiar valor textual estatico (data-copy ou data-browse-copy)
+  var copyBtn = e.target.closest('[data-copy], [data-browse-copy]');
   if (copyBtn) {
     e.preventDefault();
-    copyWithFeedback(copyBtn.getAttribute('data-copy'), copyBtn);
+    var valToCopy = copyBtn.getAttribute('data-copy');
+    if (valToCopy == null) {
+      valToCopy = copyBtn.getAttribute('data-browse-copy');
+    }
+    copyWithFeedback(valToCopy, copyBtn);
     return;
   }
+
+  // Copiar conteudo do textarea do card de busca
+  var matchCopyVal = e.target.closest('[data-match-copy-val]');
+  if (matchCopyVal) {
+    e.preventDefault();
+    var cardId = matchCopyVal.getAttribute('data-match-copy-val');
+    var ta = document.getElementById('match-val-' + cardId);
+    copyWithFeedback(ta ? ta.value : '', matchCopyVal);
+    return;
+  }
+
+  // Copiar conteudo do textarea do inspector DataGrip
+  var dgCopyVal = e.target.closest('[data-dg-copy-val]');
+  if (dgCopyVal) {
+    e.preventDefault();
+    var tName = dgCopyVal.getAttribute('data-dg-copy-val');
+    var ta = document.getElementById('dg-val-' + tName);
+    copyWithFeedback(ta ? ta.value : '', dgCopyVal);
+    return;
+  }
+
+  // Reverter textarea para o valor original
+  var revertBtn = e.target.closest('[data-revert-ta]');
+  if (revertBtn) {
+    e.preventDefault();
+    var targetTaId = revertBtn.getAttribute('data-revert-ta');
+    var targetTa = document.getElementById(targetTaId);
+    if (targetTa) {
+      performRevert(targetTa);
+      flashCopied(revertBtn);
+    }
+    return;
+  }
+
   var focusBtn = e.target.closest('[data-focus-elem]');
   if (focusBtn) {
     e.preventDefault();
     focusElementInPage(focusBtn.getAttribute('data-focus-elem'), focusBtn);
+    return;
+  }
+});
+
+// Captura de alteracoes com debounce para salvar snapshots de Undo nos textareas
+var taDebounceTimer = null;
+document.addEventListener('input', function (e) {
+  var target = e.target;
+  if (!target || (!target.classList.contains('match-textarea') && !target.classList.contains('dg-inspector-textarea'))) {
+    return;
+  }
+  clearTimeout(taDebounceTimer);
+  taDebounceTimer = setTimeout(function () {
+    recordTextareaSnapshot(target);
+  }, 250);
+});
+
+// Atalhos de teclado para Undo (Ctrl+Z / Cmd+Z) e Redo (Ctrl+Y / Ctrl+Shift+Z / Cmd+Shift+Z)
+document.addEventListener('keydown', function (e) {
+  var target = e.target;
+  if (!target || (!target.classList.contains('match-textarea') && !target.classList.contains('dg-inspector-textarea'))) {
+    return;
+  }
+
+  var isCtrlOrCmd = e.ctrlKey || e.metaKey;
+  if (!isCtrlOrCmd) { return; }
+
+  var key = (e.key || '').toLowerCase();
+
+  // Redo: Ctrl+Shift+Z ou Ctrl+Y
+  if ((key === 'z' && e.shiftKey) || key === 'y') {
+    e.preventDefault();
+    performRedo(target);
+    return;
+  }
+
+  // Undo: Ctrl+Z (sem shift)
+  if (key === 'z' && !e.shiftKey) {
+    e.preventDefault();
+    performUndo(target);
     return;
   }
 });

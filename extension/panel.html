@@ -370,16 +370,62 @@
         color: var(--graphite);
       }
 
-      /* Uma ocorrencia do campo. Folha recuada em vez de barra na lateral: o
-         bloco tem varias linhas e precisa ler como uma unidade. */
       .match {
         margin: 8px 0;
         padding: 10px 12px;
         background: var(--sunken);
+        border: 1px solid var(--line-soft);
         border-radius: var(--r-input);
       }
       .match code {
         background: var(--card);
+      }
+      .match-editor-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 6px;
+      }
+      .match-editor-acts {
+        margin-left: auto;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .match-editor-acts button {
+        padding: 3px 8px;
+        font-size: 11px;
+      }
+      .match-editor-acts button.primary {
+        background: var(--teal);
+        color: var(--teal-text);
+        border-color: var(--teal);
+      }
+      .match-textarea {
+        display: block;
+        width: 100%;
+        min-height: 60px;
+        max-height: 140px;
+        background: var(--canvas);
+        border: 1px solid var(--line-soft);
+        border-radius: var(--r-input);
+        padding: 6px 8px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        line-height: 1.4;
+        color: var(--ink);
+        resize: vertical;
+        box-sizing: border-box;
+      }
+      .match-textarea:focus {
+        outline: none;
+        border-color: var(--teal);
+        box-shadow: 0 0 0 2px var(--teal-ghost);
+      }
+      .match-feedback {
+        margin-top: 4px;
+        font-size: 11px;
       }
 
       .confirm {
@@ -726,8 +772,13 @@
       }
 
       /* Feedback visual de "copiado" — aplica via JS por 1.2s. */
-      .btn-icon.copied {
-        color: var(--ok);
+      .btn-icon.copied,
+      button.copied {
+        color: var(--ok) !important;
+        border-color: var(--ok) !important;
+      }
+      .btn-icon.copied svg {
+        stroke: var(--ok) !important;
       }
 
       /* Valores copiáveis: code com botão de copiar inline */
@@ -839,15 +890,14 @@
         gap: 6px;
       }
       .browser-table-content {
-        padding-left: 8px;
-        margin-bottom: 8px;
-        border-left: 2px solid var(--line-soft);
+        margin-bottom: 12px;
+        padding-top: 4px;
       }
       .browser-table-toolbar {
         display: flex;
         align-items: center;
         gap: 6px;
-        padding: 6px 4px 8px;
+        padding: 4px 2px 8px;
       }
       .browser-table-toolbar .chip {
         font-size: 11px;
@@ -862,6 +912,197 @@
         display: flex;
         align-items: center;
         gap: 6px;
+      }
+
+      /* DataGrid Container (Estilo DataGrip) ------------------------------- */
+      .dg-grid-wrap {
+        position: relative;
+        max-width: 100%;
+        margin: 4px 0 8px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-input);
+        background: var(--canvas);
+        overflow: hidden;
+      }
+      .dg-scroll-pane {
+        width: 100%;
+        max-height: 280px;
+        overflow-x: auto;
+        overflow-y: auto;
+      }
+      .dg-table {
+        width: max-content;
+        min-width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: 12px;
+        font-family: var(--mono);
+      }
+      .dg-table th,
+      .dg-table td {
+        padding: 5px 8px;
+        border-right: 1px solid var(--line-soft);
+        border-bottom: 1px solid var(--line-soft);
+        white-space: nowrap;
+        vertical-align: middle;
+        text-align: left;
+      }
+      .dg-table th:last-child,
+      .dg-table td:last-child {
+        border-right: none;
+      }
+      .dg-table th {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: var(--sunken);
+        color: var(--graphite);
+        font-family: var(--sans);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: none;
+        user-select: none;
+        border-bottom: 1px solid var(--line);
+      }
+      .dg-col-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        max-width: 220px;
+        min-width: 120px;
+      }
+      .dg-col-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .dg-col-badge {
+        font-size: 9px;
+        padding: 1px 4px;
+        background: var(--card);
+        color: var(--ash);
+        border-radius: 3px;
+      }
+      .dg-table th.dg-th-idx,
+      .dg-table td.dg-td-idx {
+        position: sticky;
+        left: 0;
+        z-index: 5;
+        width: 44px;
+        min-width: 44px;
+        max-width: 44px;
+        text-align: center;
+        background: var(--sunken);
+        color: var(--ash);
+        font-size: 11px;
+        user-select: none;
+        border-right: 1px solid var(--line);
+      }
+      .dg-table th.dg-th-idx {
+        z-index: 15;
+      }
+      .dg-table tr:hover td {
+        background: var(--sunken);
+      }
+      .dg-table tr:hover td.dg-td-idx {
+        background: var(--card);
+        color: var(--ink);
+      }
+      .dg-cell {
+        max-width: 220px;
+        min-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        cursor: pointer;
+        user-select: text;
+        transition: background-color 80ms, outline 80ms;
+      }
+      .dg-cell:hover {
+        background: rgba(1, 106, 113, 0.08);
+      }
+      .dg-cell.selected {
+        background: rgba(1, 106, 113, 0.18) !important;
+        outline: 1px solid var(--teal);
+        outline-offset: -1px;
+      }
+      .dg-cell.empty {
+        color: var(--ash);
+        font-style: italic;
+      }
+
+      /* Inspector / Detail Viewer (Estilo DataGrip) ------------------------ */
+      .dg-inspector {
+        background: var(--sunken);
+        border-top: 1px solid var(--line);
+        padding: 8px 10px;
+        font-family: var(--sans);
+      }
+      .dg-inspector-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+        flex-wrap: wrap;
+      }
+      .dg-inspector-title {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--teal);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .dg-inspector-title code {
+        font-size: 11px;
+        color: var(--ink);
+      }
+      .dg-inspector-acts {
+        margin-left: auto;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .dg-inspector-acts button {
+        padding: 3px 8px;
+        font-size: 11px;
+      }
+      .dg-inspector-acts button.primary {
+        background: var(--teal);
+        color: var(--teal-text);
+        border-color: var(--teal);
+      }
+      .dg-inspector-textarea {
+        display: block;
+        width: 100%;
+        min-height: 60px;
+        max-height: 140px;
+        background: var(--canvas);
+        border: 1px solid var(--line-soft);
+        border-radius: var(--r-input);
+        padding: 6px 8px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        line-height: 1.4;
+        color: var(--ink);
+        resize: vertical;
+        box-sizing: border-box;
+      }
+      .dg-inspector-textarea:focus {
+        outline: none;
+        border-color: var(--teal);
+        box-shadow: 0 0 0 2px var(--teal-ghost);
+      }
+      .dg-inspector-feedback {
+        margin-top: 4px;
+        font-size: 11px;
+      }
+      .dg-inspector-empty {
+        padding: 10px;
+        color: var(--ash);
+        font-style: italic;
+        font-size: 11.5px;
+        text-align: center;
       }
 
       /* Abas ---------------------------------------------------------------- */
@@ -913,23 +1154,19 @@
     </section>
 
     <div class="tab-bar">
-      <button id="tab-btn-ler" type="button" class="chip active">Ler campo</button>
-      <button id="tab-btn-alterar" type="button" class="chip">Alterar</button>
-      <button id="tab-btn-dump" type="button" class="chip">Dump</button>
+      <button id="tab-btn-campos" type="button" class="chip active">Campos do Formulário</button>
+      <button id="tab-btn-dump" type="button" class="chip">Dump JSON</button>
     </div>
 
-    <div id="tab-ler" class="tab-panel">
+    <div id="tab-campos" class="tab-panel">
     <section>
-      <h2>Ler campo</h2>
+      <h2>Inspecionar / Alterar Campo</h2>
       <p class="muted">
-        Lê o valor pelo nome. Trata campo desabilitado (<code>_</code>) e linhas
-        de tabela pai-filho (<code>___N</code>). Comece a digitar (ou tecle
-        <code>↓</code>) para ver os campos da página; digite <code>___</code>
-        para escolher a linha da tabela.
+        Digite o nome do campo para ler, localizar no formulário e editar o valor diretamente (no <strong>DOM</strong> ou no <strong>Banco</strong>).
       </p>
       <div class="field-row">
         <div class="ac-wrap">
-          <input id="read-field" type="text" placeholder="nome do campo (ex: empresa)" autocomplete="off" />
+          <input id="read-field" type="text" placeholder="nome do campo (ex: empresa ou campo___1)" autocomplete="off" />
           <div id="read-field-ac" class="ac-box"></div>
         </div>
         <button id="btn-read" type="button" class="primary">Ler</button>
@@ -955,49 +1192,6 @@
         </div>
         <div id="field-browser-body"></div>
       </div>
-    </section>
-    </div>
-
-    <div id="tab-alterar" class="tab-panel" hidden>
-    <section>
-      <h2>Setar campo</h2>
-      <p class="muted">
-        Altera o valor via <code>$(campo).val(valor)</code>. Mostra uma
-        confirmação (campo + valor atual → novo) antes de aplicar.
-      </p>
-      <div class="field-row">
-        <div class="ac-wrap">
-          <input id="set-field" type="text" placeholder="nome do campo" autocomplete="off" />
-          <div id="set-field-ac" class="ac-box"></div>
-        </div>
-        <input id="set-value" type="text" placeholder="novo valor" />
-        <button id="btn-set" type="button" class="primary">Setar</button>
-        <button id="btn-set-history" type="button">Histórico</button>
-      </div>
-      <div id="set-output" class="out"></div>
-      <div id="set-history" class="hist"></div>
-    </section>
-
-    <section class="sensitive">
-      <h2>Setar campo no banco</h2>
-      <p class="muted">
-        Grava o valor <strong>direto no banco</strong> (dataset
-        <code>dsSetCardValue</code>) usando o <code>documentId</code> da
-        solicitação — não mexe no DOM. Use quando o
-        <code>$(campo).val()</code> não resolve (ex.: solicitação finalizada).
-        Mostra confirmação antes de aplicar.
-      </p>
-      <div class="field-row">
-        <div class="ac-wrap">
-          <input id="dbset-field" type="text" placeholder="nome do campo" autocomplete="off" />
-          <div id="dbset-field-ac" class="ac-box"></div>
-        </div>
-        <input id="dbset-value" type="text" placeholder="novo valor" />
-        <button id="btn-dbset" type="button" class="primary">Setar no banco</button>
-        <button id="btn-dbset-history" type="button">Histórico</button>
-      </div>
-      <div id="dbset-output" class="out"></div>
-      <div id="dbset-history" class="hist"></div>
     </section>
     </div>
 
