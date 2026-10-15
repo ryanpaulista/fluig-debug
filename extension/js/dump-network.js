@@ -28,6 +28,19 @@ var NET_LIMITS = {
 
 var NET_STATIC_RE = /\.(js|css|png|jpe?g|gif|svg|ico|woff2?|ttf|eot|map|html?)(\?|#|$)/i;
 var NET_API_RE = /\/(api\/|dataset\/|ecm\/|process-management\/|webdesk\/|portal\/api|content-management\/|social\/api)/i;
+// Chamadas internas do portal Fluig (menu, alertas, temas, analytics, partials
+// HTML de widgets...). Disparam em toda pagina e escondem as chamadas que
+// interessam, entao ficam FORA por padrao (checkbox "chamadas internas do
+// portal"). Datasets nunca sao ruido. Cada item e testado contra path+query.
+var NET_NOISE_RES = [
+  /\/portal\/api\/rest\/wcm\//i,
+  /\/page-management\/api\//i,
+  /\/admin\/api\/v1\/tenants\//i,
+  /\/intelligence\/api\//i,
+  /\/globalalertapi\//i,
+  /\/tenants\/getTenantData\//i,
+  /\/users\/listData\//i
+];
 var NET_CONSTRAINT_TYPES = { 1: 'MUST', 2: 'SHOULD', 3: 'MUST_NOT' };
 
 function netPathOf(url) {
@@ -58,6 +71,20 @@ function isPanelCall(entry) {
     if (t >= w.start - 100 && t <= end + 100) { return true; }
   }
   return false;
+}
+
+function isPortalNoise(url) {
+  var p = netPathOf(url);
+  for (var i = 0; i < NET_NOISE_RES.length; i++) {
+    if (NET_NOISE_RES[i].test(p)) { return true; }
+  }
+  return false;
+}
+
+// Remove o parametro de cache-buster do jQuery (_=<timestamp>), que so adiciona
+// ruido e impede ver que duas chamadas sao a mesma.
+function stripCacheBuster(url) {
+  return String(url).replace(/([?&])_=\d+(&|$)/, function (m, a, b) { return b ? a : ''; });
 }
 
 function isDatasetUrl(url) {
@@ -138,7 +165,7 @@ function buildNetEntry(entry, kind, withResponses) {
   var item = {
     kind: kind,
     method: req.method,
-    url: req.url,
+    url: stripCacheBuster(req.url),
     status: entry.response ? entry.response.status : 0,
     timeMs: Math.round(entry.time || 0),
     at: entry.startedDateTime
@@ -174,10 +201,15 @@ function collectNetwork(opts) {
     net.getHAR(function (har) {
       var apiEntries = ((har && har.entries) || []).filter(isApiEntry);
       var ownCalls = apiEntries.filter(isPanelCall).length;
+      var noiseIgnored = 0;
       var entries = apiEntries.filter(function (e) { return !isPanelCall(e); }).map(function (e) {
         return { entry: e, kind: isDatasetUrl(e.request.url) ? 'dataset' : 'rest' };
       }).filter(function (x) {
         return x.kind === 'dataset' ? opts.datasets : opts.rest;
+      }).filter(function (x) {
+        if (x.kind === 'dataset' || opts.noise || !isPortalNoise(x.entry.request.url)) { return true; }
+        noiseIgnored++;
+        return false;
       });
       var truncated = Math.max(0, entries.length - NET_LIMITS.maxEntries);
       entries = entries.slice(-NET_LIMITS.maxEntries);
@@ -187,7 +219,8 @@ function collectNetwork(opts) {
             datasets: items.filter(function (i) { return i.kind === 'dataset'; }),
             rest: items.filter(function (i) { return i.kind === 'rest'; }),
             truncated: truncated,
-            panelCallsIgnored: ownCalls
+            panelCallsIgnored: ownCalls,
+            portalNoiseIgnored: noiseIgnored
           });
         });
     });

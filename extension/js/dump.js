@@ -199,6 +199,7 @@ function readDumpOptions() {
     datasets: on('dump-opt-datasets'),
     rest: on('dump-opt-rest'),
     responses: on('dump-opt-responses'),
+    noise: on('dump-opt-noise'),
     compact: on('dump-opt-compact'),
     mask: on('dump-opt-mask')
   };
@@ -278,7 +279,8 @@ function buildDumpOutput(result, ctx, net, opts) {
       rest: (net.rest || []).length,
       failed: all.filter(function (c) { return c.failed; }).length,
       includesResponses: !!opts.responses,
-      panelCallsIgnored: net.panelCallsIgnored || 0
+      panelCallsIgnored: net.panelCallsIgnored || 0,
+      portalNoiseIgnored: net.portalNoiseIgnored || 0
     };
   }
   return opts.mask ? maskDump(out) : out;

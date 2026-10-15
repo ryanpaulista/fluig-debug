@@ -154,9 +154,16 @@ loadFieldBrowser();
 function syncDumpOptions() {
   var anyCalls = document.getElementById('dump-opt-datasets').checked ||
     document.getElementById('dump-opt-rest').checked;
-  var resp = document.getElementById('dump-opt-responses');
-  resp.disabled = !anyCalls;
-  resp.parentNode.style.opacity = anyCalls ? '' : '0.5';
+  ['dump-opt-responses'].forEach(function (id) {
+    var el = document.getElementById(id);
+    el.disabled = !anyCalls;
+    el.parentNode.style.opacity = anyCalls ? '' : '0.5';
+  });
+  // O ruido do portal so existe em chamadas REST.
+  var noise = document.getElementById('dump-opt-noise');
+  var restOn = document.getElementById('dump-opt-rest').checked;
+  noise.disabled = !restOn;
+  noise.parentNode.style.opacity = restOn ? '' : '0.5';
 }
 document.getElementById('dump-opt-datasets').addEventListener('change', syncDumpOptions);
 document.getElementById('dump-opt-rest').addEventListener('change', syncDumpOptions);

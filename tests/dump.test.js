@@ -108,6 +108,26 @@ test('ignora chamadas feitas pelo proprio painel', function () {
   });
 });
 
+test('filtra ruido do portal e remove cache-buster', function () {
+  var har = [
+    harEntry('http://f/portal/api/rest/wcm/core/security/isadmin?space=&_=1792096103164', null, 200, { content: true }),
+    harEntry('http://f/page-management/api/v2/themes?page=1&_=1792096103169', null, 200, { items: [] }),
+    harEntry('http://f/api/public/2.0/users/listData/admin?_=1792096103171', null, 200, { content: {} }),
+    harEntry('http://f/ecm/api/rest/ecm/workflowView/getAttachments/968/admin/1?processId=x&_=1792096103177', null, 200, { content: { attachments: [] } }),
+    harEntry('http://f/ecm/api/rest/ecm/workflowView/loadhistory?processInstanceId=968&_=1792096103179', null, 200, { a: 1 })
+  ];
+  return withHar(har, { datasets: true, rest: true, responses: false, noise: false }).then(function (net) {
+    assert.strictEqual(net.rest.length, 2);
+    assert.strictEqual(net.portalNoiseIgnored, 3);
+    assert.strictEqual(net.rest[0].url, 'http://f/ecm/api/rest/ecm/workflowView/getAttachments/968/admin/1?processId=x');
+    assert.strictEqual(net.rest[1].url, 'http://f/ecm/api/rest/ecm/workflowView/loadhistory?processInstanceId=968');
+    return withHar(har, { datasets: true, rest: true, responses: false, noise: true }).then(function (all) {
+      assert.strictEqual(all.rest.length, 5);
+      assert.strictEqual(all.portalNoiseIgnored, 0);
+    });
+  });
+});
+
 test('respeita filtro de secoes', function () {
   return withHar(HAR, { datasets: true, rest: false, responses: false }).then(function (net) {
     assert.strictEqual(net.datasets.length, 2);
