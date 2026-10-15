@@ -112,9 +112,9 @@ Coleta o estado do formulário com um clique, e você escolhe por checkbox o que
 - **Campos e tabelas:** Metadados, campos simples e tabelas pai-filho estruturadas por linha.
 - **Logs do console:** `console.*` e erros capturados desde que o DevTools foi aberto.
 - **Contexto:** número da solicitação, `documentId`, usuário e tenant.
-- **Chamadas de dataset e REST:** lidas da rede do DevTools (`chrome.devtools.network`), sem hook na página, já que o `DatasetFactory` client-side é só um XHR. Cada dataset traz nome, `fields`, `constraints` (MUST/SHOULD/MUST_NOT), `order`, status e tempo. Marque **Incluir retornos** para adicionar colunas, total de linhas e uma amostra das primeiras linhas (e o corpo truncado das chamadas REST). Headers nunca entram no dump.
+- **Chamadas de dataset e REST:** lidas da rede do DevTools (`chrome.devtools.network`), sem hook na página, já que o `DatasetFactory` client-side é só um XHR. Cada dataset traz nome, `fields`, `constraints` (MUST/SHOULD/MUST_NOT), `order`, status e tempo. Marque **Incluir retornos** para adicionar colunas, total de linhas e uma amostra das primeiras linhas (e o corpo truncado das chamadas REST). Headers nunca entram no dump. Chamadas feitas pelo próprio painel (como a resolução do `documentId`) são ignoradas (`meta.network.panelCallsIgnored`).
 - **Mascaramento (ligado por padrão):** CPF, CNPJ, e-mail, `Bearer`/`Basic`, parâmetros sensíveis de URL e qualquer campo cujo nome sugira segredo (`senha`, `token`, `secret`...) viram `***`.
-- **Compacto:** omite campos vazios e linhas de tabela sem valor, reduzindo o tamanho para IAs. O status mostra o tamanho em KB e uma estimativa de tokens.
+- **Compacto:** omite campos vazios e linhas de tabela sem valor e trunca textos com mais de 600 caracteres (`[+N chars]`), reduzindo o tamanho para IAs. As contagens do `meta` refletem o resultado e `meta.compact` informa o que foi omitido. O status mostra o tamanho em KB e uma estimativa de tokens.
 
 > **ℹ️ Sobre a rede:** só aparecem as chamadas feitas com o DevTools aberto. Marque **Preserve log** na aba Network para não perdê-las ao navegar.
 

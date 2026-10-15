@@ -15,7 +15,7 @@ var assert = require('assert');
 assert.deepStrictEqual = function (a, b) { assert.strictEqual(JSON.stringify(a), JSON.stringify(b)); };
 
 var ctx = vm.createContext({ console: console, URL: URL, Promise: Promise });
-['dump-sanitize', 'dump-network', 'dump'].forEach(function (name) {
+['bridge', 'dump-sanitize', 'dump-network', 'dump'].forEach(function (name) {
   var file = path.join(__dirname, '..', 'extension', 'js', name + '.js');
   vm.runInContext(fs.readFileSync(file, 'utf8'), ctx, { filename: file });
 });
@@ -97,6 +97,17 @@ test('com retornos inclui colunas, total e amostra', function () {
   });
 });
 
+test('ignora chamadas feitas pelo proprio painel', function () {
+  var t = Date.parse('2026-01-01T00:00:00Z');
+  ctx.panelEvalWindows.length = 0;
+  ctx.panelEvalWindows.push({ start: t - 10, end: t + 500 });
+  return withHar(HAR, { datasets: true, rest: true, responses: false }).then(function (net) {
+    ctx.panelEvalWindows.length = 0;
+    assert.strictEqual(net.datasets.length + net.rest.length, 0);
+    assert.strictEqual(net.panelCallsIgnored, 3);
+  });
+});
+
 test('respeita filtro de secoes', function () {
   return withHar(HAR, { datasets: true, rest: false, responses: false }).then(function (net) {
     assert.strictEqual(net.datasets.length, 2);
@@ -122,6 +133,18 @@ test('buildDumpOutput: secoes, compacto, rede e mascara', function () {
   assert.strictEqual(out.context.process.numProcess, '1');
   assert.strictEqual(out.meta.network.failed, 1);
   assert.strictEqual(out.network.datasets.length, 1);
+
+  var big = new Array(700).join('x');
+  ctx.result2 = { entries: [
+    { name: 'a', raw: 'a', value: '', child: null },
+    { name: 'b', raw: 'b', value: big, child: null },
+    { name: 'c', raw: 'c', value: 'ok', child: null }
+  ], logs: [], capturedFrom: 'x', framesScanned: 1 };
+  var compact = run('buildDumpOutput(result2, null, null, { fields: true, logs: true, context: false, datasets: false, rest: false, responses: false, compact: true, mask: false })');
+  assert.strictEqual(compact.meta.fieldCount, 2, 'contagem reflete o compacto');
+  assert.strictEqual(compact.meta.compact.omittedEmpty, 1);
+  assert.strictEqual(compact.meta.compact.truncatedTexts, 1);
+  assert.ok(compact.fields.b.length < big.length);
 
   var semCampos = run('buildDumpOutput(result, null, null, { fields: false, logs: true, context: false, datasets: false, rest: false, responses: false, compact: false, mask: false })');
   assert.strictEqual(semCampos.fields, undefined);

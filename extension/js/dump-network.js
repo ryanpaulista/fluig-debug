@@ -47,6 +47,19 @@ function isApiEntry(entry) {
   return NET_API_RE.test(netPathOf(url));
 }
 
+// True se a chamada comecou durante um eval do proprio painel (margem de 100ms
+// para o relogio do HAR). Ver panelEvalWindows em bridge.js.
+function isPanelCall(entry) {
+  var t = Date.parse(entry.startedDateTime);
+  if (isNaN(t)) { return false; }
+  for (var i = 0; i < panelEvalWindows.length; i++) {
+    var w = panelEvalWindows[i];
+    var end = w.end || Date.now();
+    if (t >= w.start - 100 && t <= end + 100) { return true; }
+  }
+  return false;
+}
+
 function isDatasetUrl(url) {
   return /\/dataset/i.test(netPathOf(url)) || netQueryParam(url, 'datasetId') != null;
 }
@@ -159,7 +172,9 @@ function collectNetwork(opts) {
     var net = chrome.devtools && chrome.devtools.network;
     if (!net || typeof net.getHAR !== 'function') { resolve(null); return; }
     net.getHAR(function (har) {
-      var entries = ((har && har.entries) || []).filter(isApiEntry).map(function (e) {
+      var apiEntries = ((har && har.entries) || []).filter(isApiEntry);
+      var ownCalls = apiEntries.filter(isPanelCall).length;
+      var entries = apiEntries.filter(function (e) { return !isPanelCall(e); }).map(function (e) {
         return { entry: e, kind: isDatasetUrl(e.request.url) ? 'dataset' : 'rest' };
       }).filter(function (x) {
         return x.kind === 'dataset' ? opts.datasets : opts.rest;
@@ -171,7 +186,8 @@ function collectNetwork(opts) {
           resolve({
             datasets: items.filter(function (i) { return i.kind === 'dataset'; }),
             rest: items.filter(function (i) { return i.kind === 'rest'; }),
-            truncated: truncated
+            truncated: truncated,
+            panelCallsIgnored: ownCalls
           });
         });
     });

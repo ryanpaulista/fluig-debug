@@ -19,9 +19,19 @@
 // Ponte (nucleo tecnico)
 // ---------------------------------------------------------------------------
 
+// Janelas de tempo (ms) em que o PROPRIO painel avaliou algo na pagina. Chamadas
+// de rede que comecam dentro de uma janela sao do painel (ex.: resolucao do
+// documentId via workflowProcess) e ficam fora do dump de rede.
+var panelEvalWindows = [];
+var PANEL_EVAL_WINDOWS_MAX = 300;
+
 function evalInPage(expression) {
   return new Promise(function (resolve, reject) {
+    var win = { start: Date.now(), end: 0 };
+    panelEvalWindows.push(win);
+    if (panelEvalWindows.length > PANEL_EVAL_WINDOWS_MAX) { panelEvalWindows.shift(); }
     chrome.devtools.inspectedWindow.eval(expression, function (result, exceptionInfo) {
+      win.end = Date.now();
       if (exceptionInfo && (exceptionInfo.isError || exceptionInfo.isException)) {
         reject(exceptionInfo);
         return;

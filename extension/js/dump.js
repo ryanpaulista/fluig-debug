@@ -223,17 +223,37 @@ function loadDumpContext() {
   });
 }
 
-// Modo compacto: tira campos vazios e linhas de tabela sem nenhum valor.
+// Modo compacto: tira campos vazios e linhas de tabela sem nenhum valor e
+// trunca textos muito longos (RAT, JSON de payload/response...), que dominam o
+// tamanho do dump e quase nunca ajudam o diagnostico. Atualiza as contagens do
+// meta para refletirem o que de fato ficou no JSON.
+var COMPACT_TEXT_MAX = 600;
+
 function compactDump(out) {
+  var omittedEmpty = 0, truncatedTexts = 0;
   function isEmpty(v) { return v === '' || v == null || (Array.isArray(v) && v.every(isEmpty)); }
-  Object.keys(out.fields || {}).forEach(function (k) { if (isEmpty(out.fields[k])) { delete out.fields[k]; } });
+  function cut(v) {
+    if (typeof v === 'string' && v.length > COMPACT_TEXT_MAX) {
+      truncatedTexts++;
+      return v.slice(0, COMPACT_TEXT_MAX) + '… [+' + (v.length - COMPACT_TEXT_MAX) + ' chars]';
+    }
+    return Array.isArray(v) ? v.map(cut) : v;
+  }
+  Object.keys(out.fields || {}).forEach(function (k) {
+    if (isEmpty(out.fields[k])) { delete out.fields[k]; omittedEmpty++; }
+    else { out.fields[k] = cut(out.fields[k]); }
+  });
   Object.keys(out.tables || {}).forEach(function (t) {
     out.tables[t] = out.tables[t].map(function (row) {
       var r = {};
-      Object.keys(row).forEach(function (k) { if (!isEmpty(row[k])) { r[k] = row[k]; } });
+      Object.keys(row).forEach(function (k) {
+        if (isEmpty(row[k])) { omittedEmpty++; } else { r[k] = cut(row[k]); }
+      });
       return r;
     }).filter(function (row) { return Object.keys(row).length > 0; });
   });
+  out.meta.fieldCount = Object.keys(out.fields || {}).length;
+  out.meta.compact = { omittedEmpty: omittedEmpty, truncatedTexts: truncatedTexts, textMaxChars: COMPACT_TEXT_MAX };
 }
 
 // Monta o JSON final conforme as secoes escolhidas.
@@ -257,7 +277,8 @@ function buildDumpOutput(result, ctx, net, opts) {
       datasets: (net.datasets || []).length,
       rest: (net.rest || []).length,
       failed: all.filter(function (c) { return c.failed; }).length,
-      includesResponses: !!opts.responses
+      includesResponses: !!opts.responses,
+      panelCallsIgnored: net.panelCallsIgnored || 0
     };
   }
   return opts.mask ? maskDump(out) : out;
