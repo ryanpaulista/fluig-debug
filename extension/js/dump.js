@@ -218,7 +218,12 @@ function loadDumpContext() {
       if (d.ok) {
         ctx.process.documentId = d.documentId;
         ctx.process.cardIndexDocumentId = d.cardIndexDocumentId;
+      } else {
+        // Sem isso o documentId some do dump sem explicacao.
+        ctx.process.documentIdError = { stage: d.stage || null, message: d.message || null };
       }
+    } else if (d && d.message) {
+      ctx.process = { documentIdError: { stage: d.stage || null, message: d.message } };
     }
     return ctx;
   });

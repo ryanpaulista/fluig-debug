@@ -160,7 +160,7 @@ function harGetContent(entry) {
   });
 }
 
-function buildNetEntry(entry, kind, withResponses) {
+function buildNetEntry(entry, kind, withResponses, byPanel) {
   var req = entry.request;
   var item = {
     kind: kind,
@@ -177,6 +177,7 @@ function buildNetEntry(entry, kind, withResponses) {
     item.requestBody = truncateText(req.postData.text);
   }
   if (item.status === 0 || item.status >= 400) { item.failed = true; }
+  if (byPanel) { item.byPanel = true; }
   if (!withResponses) { return Promise.resolve(item); }
 
   return harGetContent(entry).then(function (res) {
@@ -200,10 +201,13 @@ function collectNetwork(opts) {
     if (!net || typeof net.getHAR !== 'function') { resolve(null); return; }
     net.getHAR(function (har) {
       var apiEntries = ((har && har.entries) || []).filter(isApiEntry);
-      var ownCalls = apiEntries.filter(isPanelCall).length;
+      // Chamadas do painel bem-sucedidas ficam de fora; as que FALHARAM
+      // permanecem (marcadas byPanel) porque explicam dados ausentes no dump.
+      function entryFailed(e) { var st = e.response ? e.response.status : 0; return st === 0 || st >= 400; }
+      var ownCalls = apiEntries.filter(function (e) { return isPanelCall(e) && !entryFailed(e); }).length;
       var noiseIgnored = 0;
-      var entries = apiEntries.filter(function (e) { return !isPanelCall(e); }).map(function (e) {
-        return { entry: e, kind: isDatasetUrl(e.request.url) ? 'dataset' : 'rest' };
+      var entries = apiEntries.filter(function (e) { return !isPanelCall(e) || entryFailed(e); }).map(function (e) {
+        return { entry: e, kind: isDatasetUrl(e.request.url) ? 'dataset' : 'rest', byPanel: isPanelCall(e) };
       }).filter(function (x) {
         return x.kind === 'dataset' ? opts.datasets : opts.rest;
       }).filter(function (x) {
@@ -213,7 +217,7 @@ function collectNetwork(opts) {
       });
       var truncated = Math.max(0, entries.length - NET_LIMITS.maxEntries);
       entries = entries.slice(-NET_LIMITS.maxEntries);
-      Promise.all(entries.map(function (x) { return buildNetEntry(x.entry, x.kind, opts.responses); }))
+      Promise.all(entries.map(function (x) { return buildNetEntry(x.entry, x.kind, opts.responses, x.byPanel); }))
         .then(function (items) {
           resolve({
             datasets: items.filter(function (i) { return i.kind === 'dataset'; }),

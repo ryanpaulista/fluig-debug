@@ -103,8 +103,11 @@ test('ignora chamadas feitas pelo proprio painel', function () {
   ctx.panelEvalWindows.push({ start: t - 10, end: t + 500 });
   return withHar(HAR, { datasets: true, rest: true, responses: false }).then(function (net) {
     ctx.panelEvalWindows.length = 0;
-    assert.strictEqual(net.datasets.length + net.rest.length, 0);
-    assert.strictEqual(net.panelCallsIgnored, 3);
+    // As 2 bem-sucedidas somem; a de status 500 permanece, marcada byPanel.
+    assert.strictEqual(net.datasets.length, 0);
+    assert.strictEqual(net.rest.length, 1);
+    assert.strictEqual(net.rest[0].byPanel, true);
+    assert.strictEqual(net.panelCallsIgnored, 2);
   });
 });
 
@@ -125,6 +128,23 @@ test('filtra ruido do portal e remove cache-buster', function () {
       assert.strictEqual(all.rest.length, 5);
       assert.strictEqual(all.portalNoiseIgnored, 0);
     });
+  });
+});
+
+test('chamada do painel que falhou continua no dump, marcada byPanel', function () {
+  var t = Date.parse('2026-01-01T00:00:00Z');
+  ctx.panelEvalWindows.length = 0;
+  ctx.panelEvalWindows.push({ start: t - 10, end: t + 500 });
+  var har = [
+    harEntry('http://f/api/public/ecm/dataset/datasets/', { name: 'workflowProcess' }, 200, { values: [] }),
+    harEntry('http://f/api/public/ecm/dataset/datasets/', { name: 'workflowProcess' }, 500, '<html>erro</html>')
+  ];
+  return withHar(har, { datasets: true, rest: true, responses: false }).then(function (net) {
+    ctx.panelEvalWindows.length = 0;
+    assert.strictEqual(net.datasets.length, 1);
+    assert.strictEqual(net.datasets[0].byPanel, true);
+    assert.strictEqual(net.datasets[0].failed, true);
+    assert.strictEqual(net.panelCallsIgnored, 1);
   });
 });
 
