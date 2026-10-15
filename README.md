@@ -108,9 +108,15 @@ Abaixo da barra de leitura, uma listagem inteligente indexa os campos da página
   > **⚠️ Requisito para Gravação no Banco:** Para que a funcionalidade de gravar no banco funcione, o ambiente Fluig deve possuir um dataset customizado chamado **`dsSetCardValue`** cadastrado no servidor. Ele recebe as constraints `documentid`, `fieldName` e `fieldValue` para persistência via API interna.
 
 ### 5. Dump de Estado em JSON
-Coleta o estado completo do formulário com um clique:
-- **JSON Agrupado:** Metadados, campos simples, tabelas pai-filho estruturadas por linha e logs de console capturados.
-- **Pronto para IAs:** Formato otimizado para copiar com um clique e colar em chats de IA (como Gemini ou ChatGPT) para diagnóstico ágil de bugs.
+Coleta o estado do formulário com um clique, e você escolhe por checkbox o que entra no JSON:
+- **Campos e tabelas:** Metadados, campos simples e tabelas pai-filho estruturadas por linha.
+- **Logs do console:** `console.*` e erros capturados desde que o DevTools foi aberto.
+- **Contexto:** número da solicitação, `documentId`, usuário e tenant.
+- **Chamadas de dataset e REST:** lidas da rede do DevTools (`chrome.devtools.network`), sem hook na página, já que o `DatasetFactory` client-side é só um XHR. Cada dataset traz nome, `fields`, `constraints` (MUST/SHOULD/MUST_NOT), `order`, status e tempo. Marque **Incluir retornos** para adicionar colunas, total de linhas e uma amostra das primeiras linhas (e o corpo truncado das chamadas REST). Headers nunca entram no dump.
+- **Mascaramento (ligado por padrão):** CPF, CNPJ, e-mail, `Bearer`/`Basic`, parâmetros sensíveis de URL e qualquer campo cujo nome sugira segredo (`senha`, `token`, `secret`...) viram `***`.
+- **Compacto:** omite campos vazios e linhas de tabela sem valor, reduzindo o tamanho para IAs. O status mostra o tamanho em KB e uma estimativa de tokens.
+
+> **ℹ️ Sobre a rede:** só aparecem as chamadas feitas com o DevTools aberto. Marque **Preserve log** na aba Network para não perdê-las ao navegar.
 
 ### 6. Histórico com Rollback
 Histórico de ações (Ler, Setar e Setar no Banco) com botão de **Restaurar valor anterior**, permitindo desfazer alterações acidentais em segundos.
@@ -138,7 +144,9 @@ extension/
     ├── autocomplete.js     # Autocomplete de nome de campo
     ├── history-actions.js  # Registro e ações (restaurar / reler) do histórico
     ├── read.js · set.js    # Aba Campos: ler e setar no DOM
-    ├── dump.js             # Aba Dump: dump JSON
+    ├── dump-sanitize.js    # Máscara de dados sensíveis do dump
+    ├── dump-network.js     # Chamadas REST e de dataset via chrome.devtools.network
+    ├── dump.js             # Aba Dump: opções, contexto e montagem do JSON
     ├── field-browser.js    # Browser de campos e tabelas pai-filho
     ├── solicitacao.js      # documentId da solicitação e helpers de dataset
     ├── dbset.js            # Setar campo direto no banco
@@ -146,6 +154,9 @@ extension/
     ├── wiring-read.js      # Eventos: leitura e histórico
     ├── wiring-browser.js   # Eventos: browser de campos
     └── main.js             # Eventos globais e inicialização
+
+tests/
+└── dump.test.js    # Teste de fumaça da lógica do dump (node tests/dump.test.js)
 ```
 
 > **ℹ️ Ordem de carga:** os arquivos de `js/` são scripts clássicos que compartilham o escopo global (sem bundler nem build). A ordem das tags `<script>` em `panel.html` é significativa: `bridge.js` e `page-*.js` primeiro, `main.js` por último. Ao criar um novo módulo, registre-o em `panel.html` respeitando essa ordem.

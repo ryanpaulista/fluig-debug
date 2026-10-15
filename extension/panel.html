@@ -71,10 +71,26 @@
     <section>
       <h2>Dump do estado</h2>
       <p class="muted">
-        Coleta de uma vez todos os campos e valores da página agrupados em
-        <strong>JSON</strong> (tabelas pai-filho por <code>___N</code>) mais os
-        <code>console.log</code>/erros capturados desde que o DevTools foi aberto
-        — pronto para copiar ou colar como contexto em uma IA.
+        Coleta o estado da página em <strong>JSON</strong> — campos e tabelas
+        pai-filho (<code>___N</code>), logs do console, contexto da solicitação e
+        as chamadas de <strong>dataset</strong> e <strong>REST</strong> vistas pela rede
+        do DevTools — pronto para copiar ou colar como contexto em uma IA.
+        Escolha abaixo o que entra no dump.
+      </p>
+      <fieldset class="dump-options">
+        <legend>Incluir no dump</legend>
+        <label><input type="checkbox" id="dump-opt-fields" checked /> Campos e tabelas</label>
+        <label><input type="checkbox" id="dump-opt-logs" checked /> Logs do console</label>
+        <label><input type="checkbox" id="dump-opt-context" checked /> Contexto (solicitação, usuário)</label>
+        <label><input type="checkbox" id="dump-opt-datasets" checked /> Chamadas de dataset</label>
+        <label><input type="checkbox" id="dump-opt-rest" checked /> Chamadas REST</label>
+        <label class="dump-sub"><input type="checkbox" id="dump-opt-responses" /> Incluir retornos (amostra de linhas / corpo)</label>
+        <label><input type="checkbox" id="dump-opt-compact" /> Compacto (omitir campos vazios)</label>
+        <label><input type="checkbox" id="dump-opt-mask" checked /> Mascarar dados sensíveis</label>
+      </fieldset>
+      <p class="muted dump-hint">
+        A rede só tem as chamadas feitas com o DevTools aberto. Marque
+        <em>Preserve log</em> na aba Network para não perdê-las ao navegar.
       </p>
       <div class="toolbar" style="margin-bottom: 12px;">
         <button id="btn-dump" type="button" class="primary">Gerar dump JSON</button>
@@ -97,6 +113,8 @@
     <script src="js/history-actions.js"></script>
     <script src="js/read.js"></script>
     <script src="js/set.js"></script>
+    <script src="js/dump-sanitize.js"></script>
+    <script src="js/dump-network.js"></script>
     <script src="js/dump.js"></script>
     <script src="js/field-browser.js"></script>
     <script src="js/solicitacao.js"></script>

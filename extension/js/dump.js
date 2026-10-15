@@ -162,25 +162,142 @@ function structureDump(result) {
   return out;
 }
 
+// Contexto da sessao lido da pagina (usuario/tenant do WCMAPI). Tudo defensivo:
+// propriedade ausente simplesmente nao aparece no JSON.
+function buildContextExpr() {
+  return [
+    '(function () {',
+    PAGE_HELPERS,
+    '  var wins = collectWindows(window, [], 0);',
+    '  var ctx = { pageUrl: null, userAgent: null, user: null, tenant: null, locale: null };',
+    '  try { ctx.pageUrl = String(window.location.href); } catch (e) {}',
+    '  try { ctx.userAgent = String(navigator.userAgent); } catch (e) {}',
+    '  for (var i = 0; i < wins.length; i++) {',
+    '    var w = wins[i];',
+    '    var api = null;',
+    '    try { api = w.WCMAPI || null; } catch (e) {}',
+    '    if (!api) { continue; }',
+    '    try {',
+    '      ctx.user = { code: api.userCode || null, login: api.userLogin || null };',
+    '      ctx.tenant = api.tenantCode || api.organizationId || null;',
+    '      ctx.locale = api.locale || null;',
+    '    } catch (e) {}',
+    '    break;',
+    '  }',
+    '  return ctx;',
+    '})()'
+  ].join('\n');
+}
+
+// Opcoes escolhidas nos checkboxes da aba Dump.
+function readDumpOptions() {
+  function on(id) { var el = document.getElementById(id); return !!(el && el.checked); }
+  return {
+    fields: on('dump-opt-fields'),
+    logs: on('dump-opt-logs'),
+    context: on('dump-opt-context'),
+    datasets: on('dump-opt-datasets'),
+    rest: on('dump-opt-rest'),
+    responses: on('dump-opt-responses'),
+    compact: on('dump-opt-compact'),
+    mask: on('dump-opt-mask')
+  };
+}
+
+// Numero da solicitacao/documentId + usuario. Falhas nao derrubam o dump.
+function loadDumpContext() {
+  return Promise.all([
+    evalInPage(buildContextExpr()).catch(function () { return null; }),
+    evalInPage(buildDocumentIdExpr()).catch(function () { return null; })
+  ]).then(function (r) {
+    var ctx = r[0] || {};
+    var d = r[1];
+    if (d && d.numProcess) {
+      ctx.process = { numProcess: d.numProcess };
+      if (d.ok) {
+        ctx.process.documentId = d.documentId;
+        ctx.process.cardIndexDocumentId = d.cardIndexDocumentId;
+      }
+    }
+    return ctx;
+  });
+}
+
+// Modo compacto: tira campos vazios e linhas de tabela sem nenhum valor.
+function compactDump(out) {
+  function isEmpty(v) { return v === '' || v == null || (Array.isArray(v) && v.every(isEmpty)); }
+  Object.keys(out.fields || {}).forEach(function (k) { if (isEmpty(out.fields[k])) { delete out.fields[k]; } });
+  Object.keys(out.tables || {}).forEach(function (t) {
+    out.tables[t] = out.tables[t].map(function (row) {
+      var r = {};
+      Object.keys(row).forEach(function (k) { if (!isEmpty(row[k])) { r[k] = row[k]; } });
+      return r;
+    }).filter(function (row) { return Object.keys(row).length > 0; });
+  });
+}
+
+// Monta o JSON final conforme as secoes escolhidas.
+function buildDumpOutput(result, ctx, net, opts) {
+  var out = structureDump(result);
+  if (!opts.fields) {
+    delete out.fields; delete out.tables; delete out.childFieldsSemTabela;
+  } else if (opts.compact) {
+    compactDump(out);
+  }
+  if (!opts.logs) { delete out.logs; }
+  if (opts.context && ctx) { out.context = ctx; }
+  if (net) {
+    var network = {};
+    if (opts.datasets) { network.datasets = net.datasets; }
+    if (opts.rest) { network.rest = net.rest; }
+    if (net.truncated) { network.omittedOlderCalls = net.truncated; }
+    out.network = network;
+    var all = (net.datasets || []).concat(net.rest || []);
+    out.meta.network = {
+      datasets: (net.datasets || []).length,
+      rest: (net.rest || []).length,
+      failed: all.filter(function (c) { return c.failed; }).length,
+      includesResponses: !!opts.responses
+    };
+  }
+  return opts.mask ? maskDump(out) : out;
+}
+
 function dumpFields() {
   var status = document.getElementById('dump-status');
+  var opts = readDumpOptions();
   status.textContent = 'Coletando…';
   document.getElementById('dump-json').value = '';
 
-  evalInPage(buildDumpExpr())
-    .then(function (result) {
+  // A rede e lida ANTES das chamadas do proprio painel (contexto/documentId),
+  // para que elas nao poluam o dump.
+  var netP = (opts.datasets || opts.rest) ? collectNetwork(opts) : Promise.resolve(null);
+
+  netP.then(function (net) {
+    var ctxP = opts.context ? loadDumpContext() : Promise.resolve(null);
+    return Promise.all([evalInPage(buildDumpExpr()), ctxP]).then(function (r) {
+      var result = r[0];
       if (!result) {
         status.innerHTML = '<span class="err">Sem retorno da página.</span>';
         return;
       }
-      var out = structureDump(result);
-      document.getElementById('dump-json').value = JSON.stringify(out, null, 2);
-      status.innerHTML = '<span class="ok">' + out.meta.fieldCount + ' campo(s), ' +
-        out.meta.tableCount + ' tabela(s), ' + out.meta.logCount + ' log(s).</span>';
-    })
-    .catch(function (exceptionInfo) {
-      status.innerHTML = '<span class="err">Erro ao coletar: ' + esc(JSON.stringify(exceptionInfo)) + '</span>';
+      var out = buildDumpOutput(result, r[1], net, opts);
+      var json = JSON.stringify(out, null, 2);
+      document.getElementById('dump-json').value = json;
+      var parts = [];
+      if (opts.fields) { parts.push(out.meta.fieldCount + ' campo(s), ' + out.meta.tableCount + ' tabela(s)'); }
+      if (out.meta.network) {
+        parts.push(out.meta.network.datasets + ' dataset(s), ' + out.meta.network.rest + ' REST' +
+          (out.meta.network.failed ? ' (' + out.meta.network.failed + ' com erro)' : ''));
+      }
+      if (opts.logs) { parts.push(out.meta.logCount + ' log(s)'); }
+      if (opts.mask) { parts.push(out.meta.masked + ' mascarado(s)'); }
+      parts.push((json.length / 1024).toFixed(1) + ' KB (~' + Math.ceil(json.length / 4) + ' tokens)');
+      status.innerHTML = '<span class="ok">' + esc(parts.join(' · ')) + '</span>';
     });
+  }).catch(function (exceptionInfo) {
+    status.innerHTML = '<span class="err">Erro ao coletar: ' + esc(JSON.stringify(exceptionInfo)) + '</span>';
+  });
 }
 
 function copyDump() {

@@ -149,3 +149,15 @@ loadSolicitacao();
 
 // Carrega o browser de campos (que tambem aquece o indice para o autocomplete).
 loadFieldBrowser();
+
+// Aba Dump: "Incluir retornos" so faz sentido com datasets ou REST marcados.
+function syncDumpOptions() {
+  var anyCalls = document.getElementById('dump-opt-datasets').checked ||
+    document.getElementById('dump-opt-rest').checked;
+  var resp = document.getElementById('dump-opt-responses');
+  resp.disabled = !anyCalls;
+  resp.parentNode.style.opacity = anyCalls ? '' : '0.5';
+}
+document.getElementById('dump-opt-datasets').addEventListener('change', syncDumpOptions);
+document.getElementById('dump-opt-rest').addEventListener('change', syncDumpOptions);
+syncDumpOptions();
