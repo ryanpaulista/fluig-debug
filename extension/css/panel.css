@@ -1,0 +1,1127 @@
+      /* ======================================================================
+         Fluig Debug — folha de estilo do painel
+
+         Sistema visual: pergaminho sob vidro. Base quente (parchment) em vez de
+         branco puro, UMA cor cromatica (teal) reservada a estado ativo e foco,
+         superficies planas separadas por linha de 1px em vez de sombra. Peso de
+         fonte vai so ate 500: a hierarquia vem de cor e espaco, nao de negrito.
+
+         Toda cor vem de token. NENHUM componente abaixo escreve cor literal —
+         trocar de tema e trocar as variaveis, e foi assim que o tema escuro saiu
+         de graca. O painel segue o tema do DevTools via color-scheme.
+
+         Tres desvios deliberados da referencia, todos por funcao:
+         1. Densidade compacta (12px de respiro, nao 32px) e sem coluna maxima de
+            900px — o painel acoplado na lateral tem 460px de largura real.
+         2. Verde/ambar/vermelho continuam existindo. A referencia e monocromatica
+            com um teal, mas isto e ferramenta de debug: "gravou" e "erro" nao
+            podem depender de ler o texto. Ficaram quentes e dessaturados, para
+            nao competir com o pergaminho.
+         3. Fonte mono nos VALORES. Valor de campo, id e hora se comparam por
+            coluna; sem largura fixa o olho perde o alinhamento.
+         ====================================================================== */
+      :root {
+        color-scheme: light dark;
+
+        /* Superficies: pergaminho (0) -> folha (1) -> recuo (2). */
+        --canvas: #faf8f5;
+        --card: #fdfbfa;
+        --sunken: #f2efe9;
+        --line: #d1d1cd;
+        --line-soft: #e5e3dd;
+
+        /* Texto: tinta -> grafite -> cinza. */
+        --ink: #27251e;
+        --graphite: #72706b;
+        --ash: #92918b;
+
+        /* O acento. Aparece em tres lugares e so neles: chip ativo, item
+           selecionado do dropdown e anel de foco. */
+        --teal: #016a71;
+        --teal-ghost: rgba(1, 106, 113, 0.12);
+        --teal-text: #faf8f5;
+        --teal-line: rgba(250, 248, 245, 0.45);
+
+        /* Botao preenchido: a coisa mais escura contra o fundo mais claro. No
+           tema escuro isso inverte (claro sobre escuro), e por isso e token. */
+        --fill: #27251e;
+        --fill-text: #faf8f5;
+        --fill-hover: #34312a;
+
+        /* Semanticas. Nao sao acento: ambar e sempre escrita, vermelho e sempre
+           erro, verde e sempre sucesso. */
+        --ok: #4a6b3d;
+        --err: #a3382c;
+        --err-line: rgba(163, 56, 44, 0.35);
+        --err-bg: rgba(163, 56, 44, 0.07);
+        --warn: #8a6416;
+        --warn-line: rgba(138, 100, 22, 0.35);
+        --warn-bg: rgba(138, 100, 22, 0.07);
+
+        --shadow: 0 1px 2px rgba(39, 37, 30, 0.08);
+        /* O dropdown flutua por cima de conteudo: a sombra de 1px da referencia
+           nao separa camada nenhuma. Unica excecao a planura. */
+        --shadow-pop: 0 8px 20px rgba(39, 37, 30, 0.16);
+
+        --sans: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        --mono: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace;
+
+        --r-card: 16px;
+        --r-input: 12px;
+        --r-btn: 6px;
+        --r-pill: 9999px;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          color-scheme: dark;
+
+          /* Mesma logica, invertida: base quente escura (subtom marrom, nao
+             cinza azulado), teal clareado para ter contraste sobre ela. */
+          --canvas: #1b1917;
+          --card: #232120;
+          --sunken: #2c2926;
+          --line: #3b3833;
+          --line-soft: #302d2a;
+
+          --ink: #ebe7e0;
+          --graphite: #a5a19a;
+          --ash: #837f78;
+
+          --teal: #34a0a6;
+          --teal-ghost: rgba(52, 160, 166, 0.16);
+          --teal-text: #10211f;
+          --teal-line: rgba(16, 33, 31, 0.35);
+
+          --fill: #ebe7e0;
+          --fill-text: #1b1917;
+          --fill-hover: #f7f4ee;
+
+          --ok: #8bb37c;
+          --err: #dd8577;
+          --err-line: rgba(221, 133, 119, 0.35);
+          --err-bg: rgba(221, 133, 119, 0.09);
+          --warn: #cfa662;
+          --warn-line: rgba(207, 166, 98, 0.35);
+          --warn-bg: rgba(207, 166, 98, 0.09);
+
+          --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+          --shadow-pop: 0 8px 20px rgba(0, 0, 0, 0.45);
+        }
+      }
+
+      /* Base ---------------------------------------------------------------- */
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        padding: 12px;
+        background: var(--canvas);
+        color: var(--ink);
+        font-family: var(--sans);
+        font-size: 14px;
+        font-weight: 400;
+        line-height: 1.43;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* Faixa de titulo: marca de tinta + nome. Sem borda, sem fundo — e ancora
+         visual, nao cabecalho de app. */
+      .topbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 2px 2px 12px;
+      }
+      .mark {
+        flex: 0 0 auto;
+        width: 16px;
+        height: 16px;
+        border-radius: 5px;
+        background: var(--ink);
+      }
+      h1 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 500;
+        letter-spacing: 0;
+      }
+      .topbar-note {
+        margin-left: auto;
+        font-size: 11px;
+        color: var(--ash);
+      }
+
+      /* Cada secao e uma folha sobre o pergaminho: por isso borda de 1px e uma
+         sombra que quase nao existe, em vez de painel flutuante. */
+      section {
+        margin: 0 0 12px;
+        padding: 16px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: var(--r-card);
+        box-shadow: var(--shadow);
+      }
+      section:last-of-type {
+        margin-bottom: 4px;
+      }
+      /* A secao que grava no banco. Um fio ambar na esquerda basta para ela nao
+         se parecer com as outras — o aviso em texto ja esta no corpo. */
+      section.sensitive {
+        border-left: 3px solid var(--warn-line);
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--ink);
+      }
+      section > p {
+        margin: 6px 0 12px;
+        font-size: 12px;
+        color: var(--graphite);
+      }
+      strong {
+        font-weight: 500;
+      }
+      .muted {
+        color: var(--graphite);
+      }
+      .ok {
+        color: var(--ok);
+      }
+      .err {
+        color: var(--err);
+      }
+
+      code {
+        font-family: var(--mono);
+        font-size: 12px;
+        padding: 1px 5px;
+        border-radius: var(--r-btn);
+        background: var(--sunken);
+        color: var(--ink);
+        overflow-wrap: anywhere;
+      }
+
+      /* Campos e botoes ----------------------------------------------------- */
+
+      .field-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin: 0;
+      }
+      .field-row + .field-row {
+        margin-top: 8px;
+      }
+
+      input[type="text"],
+      textarea {
+        font: inherit;
+        flex: 1;
+        min-width: 120px;
+        padding: 8px 12px;
+        color: var(--ink);
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: var(--r-input);
+      }
+      input[type="text"]::placeholder,
+      textarea::placeholder {
+        color: var(--ash);
+      }
+      /* O "brilho teal" da referencia, no unico lugar onde ele tem funcao:
+         dizer onde o cursor esta. */
+      input[type="text"]:focus,
+      textarea:focus {
+        outline: none;
+        border-color: var(--teal);
+        box-shadow: 0 0 0 3px var(--teal-ghost);
+      }
+
+      button {
+        font: inherit;
+        font-size: 14px;
+        font-weight: 400;
+        padding: 8px 12px;
+        color: var(--graphite);
+        background: transparent;
+        border: 1px solid var(--line);
+        border-radius: var(--r-btn);
+        cursor: pointer;
+        transition: background-color 120ms, border-color 120ms, color 120ms;
+      }
+      button:hover {
+        color: var(--ink);
+        background: var(--sunken);
+      }
+      button:focus-visible {
+        outline: none;
+        border-color: var(--teal);
+        box-shadow: 0 0 0 3px var(--teal-ghost);
+      }
+
+      /* O verbo principal de cada secao — um por secao, senao nao ha hierarquia.
+         E o unico estilo preenchido do sistema. */
+      button.primary {
+        color: var(--fill-text);
+        background: var(--fill);
+        border-color: var(--fill);
+        border-radius: var(--r-input);
+      }
+      button.primary:hover {
+        color: var(--fill-text);
+        background: var(--fill-hover);
+        border-color: var(--fill-hover);
+      }
+
+      /* Alternador de visao (Tabela / JSON): pilula, e o ativo recebe o teal. */
+      button.chip {
+        padding: 7px 12px;
+        border-color: transparent;
+        border-radius: var(--r-pill);
+      }
+      button.chip.active {
+        color: var(--teal-text);
+        background: var(--teal);
+        border-color: var(--teal);
+      }
+      button.chip.active:hover {
+        color: var(--teal-text);
+        background: var(--teal);
+      }
+
+      /* Confirmacao de acao destrutiva. Peso 500, nao 600: o vermelho ja carrega
+         o aviso. */
+      button.danger {
+        color: var(--err);
+        background: var(--err-bg);
+        border-color: var(--err-line);
+        font-weight: 500;
+      }
+      button.danger:hover {
+        color: var(--err);
+        background: var(--err-bg);
+        border-color: var(--err);
+      }
+
+      /* Busca com lupa: o campo de filtro fica dentro do grid de campos e sem o
+         icone nao se distingue de um input de valor. */
+      .search {
+        position: relative;
+        display: flex;
+        flex: 1;
+        min-width: 140px;
+      }
+      .search input[type="text"] {
+        min-width: 0;
+        padding-left: 34px;
+      }
+      .search-ico {
+        position: absolute;
+        left: 11px;
+        top: 50%;
+        width: 15px;
+        height: 15px;
+        margin-top: -7.5px;
+        fill: none;
+        stroke: var(--ash);
+        stroke-width: 1.5;
+        stroke-linecap: round;
+        pointer-events: none;
+      }
+
+      /* Saidas -------------------------------------------------------------- */
+
+      /* Vazio nao desenha divisoria: no painel recem-aberto eram cinco tracos
+         soltos sem nada embaixo. */
+      .out {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--line-soft);
+      }
+      .out:empty {
+        display: none;
+      }
+
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: baseline;
+        flex-wrap: wrap;
+        margin: 4px 0;
+      }
+      .k {
+        flex: 0 0 auto;
+        min-width: 78px;
+        font-size: 12px;
+        color: var(--graphite);
+      }
+
+      .match {
+        margin: 8px 0;
+        padding: 10px 12px;
+        background: var(--sunken);
+        border: 1px solid var(--line-soft);
+        border-radius: var(--r-input);
+      }
+      .match code {
+        background: var(--card);
+      }
+      .match-editor-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 6px;
+      }
+      .match-editor-acts {
+        margin-left: auto;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .match-editor-acts button {
+        padding: 3px 8px;
+        font-size: 11px;
+      }
+      .match-editor-acts button.primary {
+        background: var(--teal);
+        color: var(--teal-text);
+        border-color: var(--teal);
+      }
+      .match-textarea {
+        display: block;
+        width: 100%;
+        min-height: 60px;
+        max-height: 140px;
+        background: var(--canvas);
+        border: 1px solid var(--line-soft);
+        border-radius: var(--r-input);
+        padding: 6px 8px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        line-height: 1.4;
+        color: var(--ink);
+        resize: vertical;
+        box-sizing: border-box;
+      }
+      .match-textarea:focus {
+        outline: none;
+        border-color: var(--teal);
+        box-shadow: 0 0 0 2px var(--teal-ghost);
+      }
+      .match-feedback {
+        margin-top: 4px;
+        font-size: 11px;
+      }
+
+      .confirm {
+        padding: 14px;
+        background: var(--warn-bg);
+        border: 1px solid var(--warn-line);
+        border-radius: var(--r-card);
+      }
+      .confirm > p:first-child {
+        margin-top: 0;
+      }
+      .confirm .field-row {
+        margin-top: 12px;
+      }
+
+      .tag {
+        display: inline-block;
+        padding: 1px 8px;
+        font-size: 11px;
+        font-weight: 500;
+        line-height: 1.5;
+        color: var(--graphite);
+        background: transparent;
+        border: 1px solid var(--line);
+        border-radius: var(--r-pill);
+        white-space: nowrap;
+      }
+      .tag.warn {
+        color: var(--warn);
+        background: var(--warn-bg);
+        border-color: var(--warn-line);
+      }
+
+      /* Autocomplete de nome de campo --------------------------------------- */
+      /* O wrapper herda o flex que era do input (o input agora cresce dentro
+         dele) e serve de ancora para o dropdown absoluto. */
+      .ac-wrap {
+        position: relative;
+        display: flex;
+        flex: 1;
+        min-width: 120px;
+      }
+      .ac-wrap input[type="text"] {
+        min-width: 0;
+      }
+      .ac-box {
+        display: none;
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        z-index: 20;
+        max-height: 300px;
+        overflow-y: auto;
+        /* Fundo opaco (o dropdown cobre conteudo). Vem do token, entao vale nos
+           dois temas — antes eram dois valores literais e uma media query. */
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: var(--r-input);
+        box-shadow: var(--shadow-pop);
+      }
+      .ac-item {
+        padding: 7px 12px;
+        cursor: pointer;
+        border-bottom: 1px solid var(--line-soft);
+      }
+      .ac-item:hover {
+        background: var(--sunken);
+      }
+      /* Selecao por teclado. Aqui o teal e chapado de proposito: nas setas, o
+         destaque tem que ser achado sem procurar. */
+      .ac-item.active,
+      .ac-item.active:hover {
+        background: var(--teal);
+      }
+      .ac-item.active code {
+        color: var(--teal-text);
+        background: transparent;
+      }
+      .ac-item.active .ac-val {
+        color: var(--teal-text);
+        opacity: 0.85;
+      }
+      .ac-item.active .tag {
+        color: var(--teal-text);
+        background: transparent;
+        border-color: var(--teal-line);
+      }
+      .ac-name {
+        display: flex;
+        gap: 6px;
+        align-items: baseline;
+        flex-wrap: wrap;
+      }
+      .ac-val {
+        margin-top: 2px;
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--ash);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .ac-empty,
+      .ac-foot {
+        padding: 7px 12px;
+        font-size: 11px;
+        color: var(--graphite);
+      }
+      .ac-foot {
+        position: sticky;
+        bottom: 0;
+        background: var(--card);
+        border-top: 1px solid var(--line-soft);
+      }
+      .ac-foot code {
+        font-size: 10px;
+      }
+
+      /* Historico por secao ------------------------------------------------- */
+
+      .hist {
+        display: none;
+        margin-top: 12px;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-card);
+      }
+      .hist-head {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 6px;
+        font-size: 12px;
+      }
+      .hist-head .muted {
+        font-size: 11px;
+      }
+      .hist-head button {
+        margin-left: auto;
+      }
+      .hist-item {
+        padding: 8px 0 4px;
+        border-top: 1px solid var(--line-soft);
+      }
+      .hist-item:first-of-type {
+        border-top: none;
+      }
+      .hist-time {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--ash);
+      }
+      .hist button {
+        padding: 4px 10px;
+        font-size: 12px;
+      }
+      .hist p {
+        margin: 4px 0 0;
+        font-size: 12px;
+      }
+
+      /* Dump — visao em tabela ---------------------------------------------- */
+
+      .dump-row {
+        display: flex;
+        gap: 10px;
+        align-items: baseline;
+        flex-wrap: wrap;
+        padding: 8px 6px;
+        border-top: 1px solid var(--line-soft);
+        border-radius: 8px;
+      }
+      .dump-row:first-child {
+        border-top: none;
+      }
+      .dump-row:hover {
+        background: var(--sunken);
+      }
+      .dump-row:hover code {
+        background: var(--card);
+      }
+      .dump-name {
+        flex: 0 0 32%;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .dump-tags {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+        margin-top: 4px;
+      }
+      .dump-val {
+        flex: 1 1 auto;
+        min-width: 0;
+        /* Valor longo (JSON num hidden, texto de parecer) nao pode esticar a
+           linha indefinidamente. Corta em 3 linhas COM reticencias, para o corte
+           ficar visivel — o valor inteiro continua na aba JSON. */
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        overflow: hidden;
+        overflow-wrap: anywhere;
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+      /* Acoes fantasma: no painel de 460px, dois botoes de contorno por linha
+         viravam a coisa mais pesada do grid. Aparecem no hover e no foco pelo
+         teclado (:focus-within), e continuam alcancaveis por Tab. */
+      .dump-acts {
+        flex: 0 0 auto;
+        display: flex;
+        gap: 4px;
+        opacity: 0;
+        transition: opacity 120ms;
+      }
+      .dump-row:hover .dump-acts,
+      .dump-row:focus-within .dump-acts {
+        opacity: 1;
+      }
+      .dump-acts button {
+        padding: 3px 8px;
+        font-size: 11px;
+      }
+      .dump-foot {
+        margin-top: 8px;
+        padding-top: 8px;
+        font-size: 11px;
+        border-top: 1px solid var(--line-soft);
+      }
+
+      textarea {
+        display: block;
+        width: 100%;
+        min-height: 200px;
+        font-family: var(--mono);
+        font-size: 12px;
+        line-height: 1.5;
+        resize: vertical;
+        white-space: pre;
+      }
+
+      /* Barra de rolagem: a nativa do Chrome desenha um cinza puro que briga com
+         o pergaminho. */
+      ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--line);
+        border: 3px solid transparent;
+        border-radius: var(--r-pill);
+        background-clip: content-box;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--ash);
+        background-clip: content-box;
+      }
+
+      /* Contexto (Solicitação fixa) ----------------------------------------- */
+
+      .context {
+        padding: 12px 16px;
+      }
+      .context-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .context-head h2 {
+        font-size: 13px;
+      }
+      .context-head .muted {
+        margin-left: auto;
+        font-size: 11px;
+      }
+      .context-body {
+        margin-top: 6px;
+      }
+      .context-body:empty {
+        display: none;
+      }
+      .context-body .row {
+        margin: 2px 0;
+      }
+
+      /* Botão icone (inline, sem borda — para ações secundárias como
+         recarregar e copiar, que não merecem peso visual). */
+      .btn-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        color: var(--ash);
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: var(--r-btn);
+        cursor: pointer;
+        transition: color 120ms, background-color 120ms, border-color 120ms;
+      }
+      .btn-icon:hover {
+        color: var(--ink);
+        background: var(--sunken);
+        border-color: var(--line);
+      }
+      .btn-icon:focus-visible {
+        outline: none;
+        border-color: var(--teal);
+        box-shadow: 0 0 0 3px var(--teal-ghost);
+      }
+      /* Botão com ícone e texto (ações contextuais secundárias) */
+      .btn-icon-text {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        padding: 4px 10px;
+        color: var(--graphite);
+        background: var(--canvas);
+        border: 1px solid var(--line);
+        border-radius: var(--r-pill);
+        cursor: pointer;
+        transition: color 120ms, background-color 120ms, border-color 120ms;
+      }
+      .btn-icon-text:hover {
+        color: var(--teal);
+        background: var(--sunken);
+        border-color: var(--teal);
+      }
+      .btn-icon-text svg {
+        flex-shrink: 0;
+      }
+      .btn-icon-text.active {
+        color: var(--teal-text);
+        background: var(--teal);
+        border-color: var(--teal);
+      }
+
+      /* Feedback visual de "copiado" — aplica via JS por 1.2s. */
+      .btn-icon.copied,
+      button.copied {
+        color: var(--ok) !important;
+        border-color: var(--ok) !important;
+      }
+      .btn-icon.copied svg {
+        stroke: var(--ok) !important;
+      }
+
+      /* Valores copiáveis: code com botão de copiar inline */
+      .copyable {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 4px;
+      }
+      .copyable .btn-icon {
+        width: 20px;
+        height: 20px;
+        vertical-align: middle;
+        flex-shrink: 0;
+      }
+      .copyable .btn-icon svg {
+        width: 12px;
+        height: 12px;
+      }
+
+      /* Toolbar: barra de ações horizontal com agrupamento visual. */
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        margin: 0;
+      }
+      .toolbar-group {
+        display: flex;
+        gap: 2px;
+        padding: 2px;
+        background: var(--sunken);
+        border: 1px solid var(--line-soft);
+        border-radius: var(--r-input);
+      }
+      .toolbar-group .chip {
+        border-radius: 9px;
+      }
+      .toolbar + .dump-filter-row {
+        margin-top: 10px;
+      }
+      .dump-filter-row {
+        display: flex;
+        gap: 8px;
+      }
+
+      /* Browser de campos (aba Ler) --------------------------------------- */
+
+      .field-browser {
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid var(--line-soft);
+      }
+      .field-browser .dump-filter-row {
+        margin-bottom: 8px;
+      }
+      .browser-group-title {
+        font-size: 11px;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--ash);
+        margin: 12px 0 6px;
+        padding: 0 4px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .browser-group-title:first-child {
+        margin-top: 4px;
+      }
+      .browser-table-band {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        margin: 4px 0;
+        background: var(--sunken);
+        border: 1px solid var(--line-soft);
+        border-radius: var(--r-input);
+        cursor: pointer;
+        user-select: none;
+        transition: background-color 120ms, border-color 120ms;
+      }
+      .browser-table-band:hover {
+        background: var(--canvas);
+        border-color: var(--line);
+      }
+      .browser-table-band .caret {
+        font-size: 10px;
+        color: var(--ash);
+        transition: transform 120ms;
+        display: inline-block;
+        width: 12px;
+        text-align: center;
+      }
+      .browser-table-band.expanded .caret {
+        transform: rotate(90deg);
+      }
+      .browser-table-band .tbl-name {
+        font-weight: 500;
+        color: var(--ink);
+      }
+      .browser-table-band .tbl-meta {
+        margin-left: auto;
+        font-size: 11px;
+        color: var(--graphite);
+        display: flex;
+        gap: 6px;
+      }
+      .browser-table-content {
+        margin-bottom: 12px;
+        padding-top: 4px;
+      }
+      .browser-table-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 2px 8px;
+      }
+      .browser-table-toolbar .chip {
+        font-size: 11px;
+        padding: 2px 8px;
+      }
+      .browser-row-header {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--teal);
+        padding: 6px 4px 2px;
+        margin-top: 4px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      /* DataGrid Container (Estilo DataGrip) ------------------------------- */
+      .dg-grid-wrap {
+        position: relative;
+        max-width: 100%;
+        margin: 4px 0 8px;
+        border: 1px solid var(--line);
+        border-radius: var(--r-input);
+        background: var(--canvas);
+        overflow: hidden;
+      }
+      .dg-scroll-pane {
+        width: 100%;
+        max-height: 280px;
+        overflow-x: auto;
+        overflow-y: auto;
+      }
+      .dg-table {
+        width: max-content;
+        min-width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: 12px;
+        font-family: var(--mono);
+      }
+      .dg-table th,
+      .dg-table td {
+        padding: 5px 8px;
+        border-right: 1px solid var(--line-soft);
+        border-bottom: 1px solid var(--line-soft);
+        white-space: nowrap;
+        vertical-align: middle;
+        text-align: left;
+      }
+      .dg-table th:last-child,
+      .dg-table td:last-child {
+        border-right: none;
+      }
+      .dg-table th {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background: var(--sunken);
+        color: var(--graphite);
+        font-family: var(--sans);
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: none;
+        user-select: none;
+        border-bottom: 1px solid var(--line);
+      }
+      .dg-col-header {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        max-width: 220px;
+        min-width: 120px;
+      }
+      .dg-col-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .dg-col-badge {
+        font-size: 9px;
+        padding: 1px 4px;
+        background: var(--card);
+        color: var(--ash);
+        border-radius: 3px;
+      }
+      .dg-table th.dg-th-idx,
+      .dg-table td.dg-td-idx {
+        position: sticky;
+        left: 0;
+        z-index: 5;
+        width: 44px;
+        min-width: 44px;
+        max-width: 44px;
+        text-align: center;
+        background: var(--sunken);
+        color: var(--ash);
+        font-size: 11px;
+        user-select: none;
+        border-right: 1px solid var(--line);
+      }
+      .dg-table th.dg-th-idx {
+        z-index: 15;
+      }
+      .dg-table tr:hover td {
+        background: var(--sunken);
+      }
+      .dg-table tr:hover td.dg-td-idx {
+        background: var(--card);
+        color: var(--ink);
+      }
+      .dg-cell {
+        max-width: 220px;
+        min-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        cursor: pointer;
+        user-select: text;
+        transition: background-color 80ms, outline 80ms;
+      }
+      .dg-cell:hover {
+        background: rgba(1, 106, 113, 0.08);
+      }
+      .dg-cell.selected {
+        background: rgba(1, 106, 113, 0.18) !important;
+        outline: 1px solid var(--teal);
+        outline-offset: -1px;
+      }
+      .dg-cell.empty {
+        color: var(--ash);
+        font-style: italic;
+      }
+
+      /* Inspector / Detail Viewer (Estilo DataGrip) ------------------------ */
+      .dg-inspector {
+        background: var(--sunken);
+        border-top: 1px solid var(--line);
+        padding: 8px 10px;
+        font-family: var(--sans);
+      }
+      .dg-inspector-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+        flex-wrap: wrap;
+      }
+      .dg-inspector-title {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--teal);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .dg-inspector-title code {
+        font-size: 11px;
+        color: var(--ink);
+      }
+      .dg-inspector-acts {
+        margin-left: auto;
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .dg-inspector-acts button {
+        padding: 3px 8px;
+        font-size: 11px;
+      }
+      .dg-inspector-acts button.primary {
+        background: var(--teal);
+        color: var(--teal-text);
+        border-color: var(--teal);
+      }
+      .dg-inspector-textarea {
+        display: block;
+        width: 100%;
+        min-height: 60px;
+        max-height: 140px;
+        background: var(--canvas);
+        border: 1px solid var(--line-soft);
+        border-radius: var(--r-input);
+        padding: 6px 8px;
+        font-family: var(--mono);
+        font-size: 11.5px;
+        line-height: 1.4;
+        color: var(--ink);
+        resize: vertical;
+        box-sizing: border-box;
+      }
+      .dg-inspector-textarea:focus {
+        outline: none;
+        border-color: var(--teal);
+        box-shadow: 0 0 0 2px var(--teal-ghost);
+      }
+      .dg-inspector-feedback {
+        margin-top: 4px;
+        font-size: 11px;
+      }
+      .dg-inspector-empty {
+        padding: 10px;
+        color: var(--ash);
+        font-style: italic;
+        font-size: 11.5px;
+        text-align: center;
+      }
+
+      /* Abas ---------------------------------------------------------------- */
+
+      .tab-bar {
+        display: flex;
+        gap: 2px;
+        margin: 0 0 12px;
+        padding: 3px;
+        background: var(--sunken);
+        border: 1px solid var(--line-soft);
+        border-radius: var(--r-input);
+      }
+      .tab-bar .chip {
+        flex: 1;
+        text-align: center;
+        border-radius: 9px;
+      }
+      .tab-panel[hidden] {
+        display: none !important;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+        }
+      }

@@ -10,7 +10,7 @@
     <a href="#instalação"><img src="https://img.shields.io/badge/Manifest-V3-teal?style=flat-square" alt="Manifest V3" /></a>
     <a href="#permissões"><img src="https://img.shields.io/badge/Permissões-Zero-brightgreen?style=flat-square" alt="Zero Permissions" /></a>
     <a href="#plataforma"><img src="https://img.shields.io/badge/Plataforma-TOTVS%20Fluig-blue?style=flat-square" alt="TOTVS Fluig" /></a>
-    <a href="#versão"><img src="https://img.shields.io/badge/Versão-2.0.0-orange?style=flat-square" alt="Version 2.0" /></a>
+    <a href="#versão"><img src="https://img.shields.io/badge/Versão-2.1.0-orange?style=flat-square" alt="Version 2.1" /></a>
   </p>
 
   <br />
@@ -124,9 +124,31 @@ extension/
 ├── manifest.json     # Manifest V3 — zero permissões requisitadas
 ├── devtools.html     # Página oculta do DevTools que orquestra o ciclo de vida
 ├── devtools.js       # Detecção de ambiente Fluig e registro da aba no DevTools
-├── panel.html        # Interface de usuário (CSS tokens, abas e componentes)
-└── panel.js          # Ponte inspectedWindow.eval, indexação de campos e lógica
+├── panel.html        # Marcação da interface (abas e componentes)
+├── css/
+│   └── panel.css     # Estilos (tokens de design e componentes)
+└── js/               # Lógica do painel, dividida por responsabilidade
+    ├── bridge.js           # Ponte inspectedWindow.eval + helpers injetados na página
+    ├── page-find.js        # Expressões de página: localizar campo, focar, coletar linha
+    ├── page-index.js       # Expressão de página: índice de campos (autocomplete)
+    ├── page-set.js         # Expressão de página: setar valor no DOM
+    ├── ui-utils.js         # Render, copiar, escape e tags
+    ├── textarea-history.js # Undo / Redo / Revert de textareas
+    ├── history.js          # Histórico por seção
+    ├── autocomplete.js     # Autocomplete de nome de campo
+    ├── history-actions.js  # Registro e ações (restaurar / reler) do histórico
+    ├── read.js · set.js    # Aba Campos: ler e setar no DOM
+    ├── dump.js             # Aba Dump: dump JSON
+    ├── field-browser.js    # Browser de campos e tabelas pai-filho
+    ├── solicitacao.js      # documentId da solicitação e helpers de dataset
+    ├── dbset.js            # Setar campo direto no banco
+    ├── tabs.js             # Troca de abas
+    ├── wiring-read.js      # Eventos: leitura e histórico
+    ├── wiring-browser.js   # Eventos: browser de campos
+    └── main.js             # Eventos globais e inicialização
 ```
+
+> **ℹ️ Ordem de carga:** os arquivos de `js/` são scripts clássicos que compartilham o escopo global (sem bundler nem build). A ordem das tags `<script>` em `panel.html` é significativa: `bridge.js` e `page-*.js` primeiro, `main.js` por último. Ao criar um novo módulo, registre-o em `panel.html` respeitando essa ordem.
 
 - **Sem dependências externas:** Construído em JavaScript puro, leve e sem frameworks pesados.
 - **CSP Compliant (MV3):** Nenhuma injeção de script inline; total conformidade com as diretrizes do Manifest V3.

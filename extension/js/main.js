@@ -1,0 +1,151 @@
+// js/main.js — Wiring final e inicializacao
+// Script classico (escopo global compartilhado); ordem de carga definida em panel.html.
+
+document.getElementById('btn-dump').addEventListener('click', dumpFields);
+document.getElementById('btn-copy-dump').addEventListener('click', copyDump);
+
+document.getElementById('btn-reload-solicitacao').addEventListener('click', loadSolicitacao);
+
+document.getElementById('btn-read-history').addEventListener('click', function () { toggleHistory('read'); });
+
+// Delegacao: botoes de copiar inline, localizar e reverter sao criados dinamicamente
+document.addEventListener('click', function (e) {
+  if (!e.target.closest) { return; }
+
+  // Copiar valor textual estatico (data-copy ou data-browse-copy)
+  var copyBtn = e.target.closest('[data-copy], [data-browse-copy]');
+  if (copyBtn) {
+    e.preventDefault();
+    var valToCopy = copyBtn.getAttribute('data-copy');
+    if (valToCopy == null) {
+      valToCopy = copyBtn.getAttribute('data-browse-copy');
+    }
+    copyWithFeedback(valToCopy, copyBtn);
+    return;
+  }
+
+  // Copiar conteudo do textarea do card de busca
+  var matchCopyVal = e.target.closest('[data-match-copy-val]');
+  if (matchCopyVal) {
+    e.preventDefault();
+    var cardId = matchCopyVal.getAttribute('data-match-copy-val');
+    var ta = document.getElementById('match-val-' + cardId);
+    copyWithFeedback(ta ? ta.value : '', matchCopyVal);
+    return;
+  }
+
+  // Copiar conteudo do textarea do inspector DataGrip
+  var dgCopyVal = e.target.closest('[data-dg-copy-val]');
+  if (dgCopyVal) {
+    e.preventDefault();
+    var tName = dgCopyVal.getAttribute('data-dg-copy-val');
+    var ta = document.getElementById('dg-val-' + tName);
+    copyWithFeedback(ta ? ta.value : '', dgCopyVal);
+    return;
+  }
+
+  // Reverter textarea para o valor original
+  var revertBtn = e.target.closest('[data-revert-ta]');
+  if (revertBtn) {
+    e.preventDefault();
+    var targetTaId = revertBtn.getAttribute('data-revert-ta');
+    var targetTa = document.getElementById(targetTaId);
+    if (targetTa) {
+      performRevert(targetTa);
+      flashCopied(revertBtn);
+    }
+    return;
+  }
+
+  var focusBtn = e.target.closest('[data-focus-elem]');
+  if (focusBtn) {
+    e.preventDefault();
+    focusElementInPage(focusBtn.getAttribute('data-focus-elem'), focusBtn);
+    return;
+  }
+});
+
+// Captura de alteracoes com debounce para salvar snapshots de Undo nos textareas
+var taDebounceTimer = null;
+document.addEventListener('input', function (e) {
+  var target = e.target;
+  if (!target || (!target.classList.contains('match-textarea') && !target.classList.contains('dg-inspector-textarea'))) {
+    return;
+  }
+  clearTimeout(taDebounceTimer);
+  taDebounceTimer = setTimeout(function () {
+    recordTextareaSnapshot(target);
+  }, 250);
+});
+
+// Atalhos de teclado para Undo (Ctrl+Z / Cmd+Z) e Redo (Ctrl+Y / Ctrl+Shift+Z / Cmd+Shift+Z)
+document.addEventListener('keydown', function (e) {
+  var target = e.target;
+  if (!target || (!target.classList.contains('match-textarea') && !target.classList.contains('dg-inspector-textarea'))) {
+    return;
+  }
+
+  var isCtrlOrCmd = e.ctrlKey || e.metaKey;
+  if (!isCtrlOrCmd) { return; }
+
+  var key = (e.key || '').toLowerCase();
+
+  // Redo: Ctrl+Shift+Z ou Ctrl+Y
+  if ((key === 'z' && e.shiftKey) || key === 'y') {
+    e.preventDefault();
+    performRedo(target);
+    return;
+  }
+
+  // Undo: Ctrl+Z (sem shift)
+  if (key === 'z' && !e.shiftKey) {
+    e.preventDefault();
+    performUndo(target);
+    return;
+  }
+});
+
+// Delegacao: os botoes de dentro do historico sao recriados a cada render, entao
+// nao da para prender listener neles um a um.
+document.addEventListener('click', function (e) {
+  if (!e.target.closest) { return; }
+  var el = e.target.closest('[data-hist-restore], [data-hist-reread], [data-hist-clear]');
+  if (!el) { return; }
+
+  var restore = el.getAttribute('data-hist-restore');
+  if (restore) {
+    var parts = restore.split(':');
+    restoreFromHistory(parts[0], Number(parts[1]));
+    return;
+  }
+
+  var reread = el.getAttribute('data-hist-reread');
+  if (reread) {
+    rereadFromHistory(Number(reread));
+    return;
+  }
+
+  var clear = el.getAttribute('data-hist-clear');
+  if (clear) {
+    histories[clear] = [];
+    renderHistory(clear);
+  }
+});
+
+// Navegacao: a pagina nova tem outros campos — o indice do autocomplete morre.
+// O historico NAO e limpo: rever o que voce setou antes de recarregar a pagina e
+// justamente um dos usos.
+chrome.devtools.network.onNavigated.addListener(function () {
+  invalidateFieldIndex();
+  browserFields = [];
+  browserExpandedTables = {};
+  loadFieldBrowser();
+});
+
+document.getElementById('read-field').focus();
+
+// Resolve o documentId da solicitacao automaticamente ao abrir o painel.
+loadSolicitacao();
+
+// Carrega o browser de campos (que tambem aquece o indice para o autocomplete).
+loadFieldBrowser();
