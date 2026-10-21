@@ -983,15 +983,29 @@
         position: sticky;
         left: 0;
         z-index: 5;
-        width: 44px;
-        min-width: 44px;
-        max-width: 44px;
+        width: 58px;
+        min-width: 58px;
+        max-width: 58px;
         text-align: center;
         background: var(--sunken);
         color: var(--ash);
         font-size: 11px;
         user-select: none;
         border-right: 1px solid var(--line);
+      }
+      .dg-idx-wrap {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+      }
+      .dg-copy-row-btn {
+        width: 20px;
+        height: 20px;
+        opacity: 0.55;
+      }
+      .dg-table tr:hover .dg-copy-row-btn {
+        opacity: 1;
       }
       .dg-table th.dg-th-idx {
         z-index: 15;
@@ -1158,4 +1172,117 @@
       .dump-hint {
         margin: 0 0 10px;
         font-size: 11px;
+      }
+
+      /* Aba Rede Fluig (Monitor ao vivo) ----------------------------------- */
+      .net-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 6px;
+      }
+      .net-options-row {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin: 4px 0 10px;
+        font-size: 12px;
+        color: var(--graphite);
+      }
+      .net-options-row label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+      }
+      .net-monitor-list {
+        max-height: 260px;
+        overflow-y: auto;
+        background: var(--card);
+      }
+      .net-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 6px 10px;
+        border-bottom: 1px solid var(--line-soft);
+        cursor: pointer;
+        transition: background-color 80ms;
+      }
+      .net-row:last-child {
+        border-bottom: none;
+      }
+      .net-row:hover {
+        background: var(--sunken);
+      }
+      .net-row.selected {
+        background: var(--teal-ghost);
+        outline: 1px solid var(--teal);
+        outline-offset: -1px;
+      }
+      .net-row-main {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        flex: 1;
+      }
+      .net-method {
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--graphite);
+        flex-shrink: 0;
+      }
+      .net-title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 12px;
+      }
+      .net-row-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+        font-size: 11px;
+      }
+      .net-tag-ds {
+        color: var(--teal);
+        border-color: var(--teal);
+        background: var(--teal-ghost);
+      }
+      .tag.danger {
+        color: var(--err);
+        border-color: var(--err);
+      }
+      .net-detail-meta {
+        margin: 6px 0 8px;
+      }
+      .net-section-label {
+        font-size: 11px;
+        font-weight: 500;
+        color: var(--graphite);
+        margin: 8px 0 4px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .net-constraints-wrap {
+        margin: 4px 0 8px;
+        overflow-x: auto;
+        border: 1px solid var(--line-soft);
+        border-radius: var(--r-input);
+        background: var(--card);
+      }
+      .net-constraints-table th,
+      .net-constraints-table td {
+        padding: 4px 8px;
+        font-size: 11.5px;
+      }
+      .net-resp-textarea {
+        min-height: 120px;
+        max-height: 260px;
       }

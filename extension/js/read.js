@@ -112,8 +112,12 @@ function renderRow(row, queriedName) {
     return;
   }
 
+  var rowKeyAttr = esc((row.table || '') + ':' + (row.child || '')).replace(/"/g, '&quot;');
   var html =
-    '<p><strong>Linha completa</strong></p>' +
+    '<div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:4px;">' +
+    '<p style="margin:0;"><strong>Linha completa</strong></p>' +
+    '<button type="button" data-copy-row="' + rowKeyAttr + '" title="Copiar JSON com todas as células desta linha">Copiar Linha JSON</button>' +
+    '</div>' +
     '<div class="row"><span class="k">tabela</span><code>' + esc(row.table) + '</code> ' +
     '<span class="tag">linha ' + esc(row.child) + '</span> ' +
     '<span class="muted">(' + row.fields.length + ' campo(s))</span></div>' +

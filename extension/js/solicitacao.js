@@ -226,14 +226,71 @@ function renderSolicitacao(result) {
   render('solicitacao-output', html);
 }
 
-function loadSolicitacao() {
+var solicitacaoRetryTimer = null;
+var solicitacaoRetryCount = 0;
+var SOLICITACAO_MAX_RETRIES = 25;
+var SOLICITACAO_RETRY_MS = 650;
+
+function cancelSolicitacaoRetry() {
+  if (solicitacaoRetryTimer) {
+    clearTimeout(solicitacaoRetryTimer);
+    solicitacaoRetryTimer = null;
+  }
+}
+
+function scheduleSolicitacaoRetry() {
+  if (solicitacaoRetryCount >= SOLICITACAO_MAX_RETRIES) { return false; }
+  solicitacaoRetryCount++;
+  cancelSolicitacaoRetry();
+  solicitacaoRetryTimer = setTimeout(function () {
+    solicitacaoRetryTimer = null;
+    loadSolicitacao(true);
+  }, SOLICITACAO_RETRY_MS);
+  return true;
+}
+
+function loadSolicitacao(isRetry) {
   var status = document.getElementById('solicitacao-status');
-  status.textContent = 'Resolvendo…';
-  render('solicitacao-output', '<span class="muted">Lendo a solicitação e consultando o documentId…</span>');
+  if (!status) { return; }
+  if (isRetry !== true) {
+    cancelSolicitacaoRetry();
+    solicitacaoRetryCount = 0;
+    status.textContent = 'Resolvendo…';
+    render('solicitacao-output', '<span class="muted">Lendo a solicitação e consultando o documentId…</span>');
+  }
 
   evalInPage(buildDocumentIdExpr())
-    .then(renderSolicitacao)
+    .then(function (result) {
+      // Enquanto a pagina / iframe ainda esta carregando o DatasetFactory,
+      // aguarda e tenta novamente sem exibir erro prematuro.
+      if (!result || (!result.ok && (result.stage === 'dataset' || result.stage === 'query'))) {
+        if (scheduleSolicitacaoRetry()) {
+          status.textContent = 'Resolvendo…';
+          var waitMsg = (result && result.numProcess)
+            ? 'Solicitação <code>' + esc(result.numProcess) + '</code> — aguardando carregamento do formulário…'
+            : 'Aguardando carregamento do formulário…';
+          render('solicitacao-output', '<span class="muted">' + waitMsg + '</span>');
+          return;
+        }
+      }
+
+      renderSolicitacao(result);
+
+      // Se o documentId ja resolveu mas os metadados do ECM.workflowView
+      // (formDescription / sequence) ainda nao chegaram via AJAX, faz mais
+      // algumas tentativas silenciosas para preencher o cabeçalho completo.
+      if (result && result.ok && !(result.workflowView && result.workflowView.formDescription)) {
+        scheduleSolicitacaoRetry();
+      } else {
+        cancelSolicitacaoRetry();
+      }
+    })
     .catch(function (exceptionInfo) {
+      if (scheduleSolicitacaoRetry()) {
+        status.textContent = 'Resolvendo…';
+        render('solicitacao-output', '<span class="muted">Aguardando contexto da página…</span>');
+        return;
+      }
       status.innerHTML = '<span class="err">erro</span>';
       render('solicitacao-output', '<span class="err">Erro ao resolver: ' + esc(JSON.stringify(exceptionInfo)) + '</span>');
     });

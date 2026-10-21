@@ -25,19 +25,38 @@
 var panelEvalWindows = [];
 var PANEL_EVAL_WINDOWS_MAX = 300;
 
+function isTransientContextError(err) {
+  if (!err || !err.isError) { return false; }
+  var raw = '';
+  try { raw = JSON.stringify(err); } catch (e) { raw = String(err); }
+  return /no execution context|Execution context was destroyed|Inspected target navigated|Cannot find context/i.test(raw);
+}
+
 function evalInPage(expression) {
   return new Promise(function (resolve, reject) {
-    var win = { start: Date.now(), end: 0 };
-    panelEvalWindows.push(win);
-    if (panelEvalWindows.length > PANEL_EVAL_WINDOWS_MAX) { panelEvalWindows.shift(); }
-    chrome.devtools.inspectedWindow.eval(expression, function (result, exceptionInfo) {
-      win.end = Date.now();
-      if (exceptionInfo && (exceptionInfo.isError || exceptionInfo.isException)) {
-        reject(exceptionInfo);
-        return;
-      }
-      resolve(result);
-    });
+    var attempts = 0;
+    var maxAttempts = 20;
+
+    function attempt() {
+      attempts++;
+      var win = { start: Date.now(), end: 0 };
+      panelEvalWindows.push(win);
+      if (panelEvalWindows.length > PANEL_EVAL_WINDOWS_MAX) { panelEvalWindows.shift(); }
+      chrome.devtools.inspectedWindow.eval(expression, function (result, exceptionInfo) {
+        win.end = Date.now();
+        if (exceptionInfo && (exceptionInfo.isError || exceptionInfo.isException)) {
+          if (isTransientContextError(exceptionInfo) && attempts < maxAttempts && typeof setTimeout === 'function') {
+            setTimeout(attempt, 350);
+            return;
+          }
+          reject(exceptionInfo);
+          return;
+        }
+        resolve(result);
+      });
+    }
+
+    attempt();
   });
 }
 
@@ -51,14 +70,28 @@ var PAGE_HELPERS = [
   '  }',
   '  // window + iframes acessiveis (mesma origem), recursivo.',
   '  function collectWindows(win, acc, depth) {',
+  '    if (!win || acc.indexOf(win) >= 0) { return acc; }',
   '    acc.push(win);',
   '    if (depth > 5) { return acc; }',
-  '    var frames;',
-  '    try { frames = win.frames; } catch (e) { return acc; }',
-  '    for (var i = 0; i < frames.length; i++) {',
-  '      try { var f = frames[i]; void f.document; collectWindows(f, acc, depth + 1); }',
-  '      catch (e) { /* cross-origin: ignora */ }',
-  '    }',
+  '    try {',
+  '      var frames = win.frames;',
+  '      if (frames && typeof frames.length === "number") {',
+  '        for (var i = 0; i < frames.length; i++) {',
+  '          try { var f = frames[i]; if (f) { void f.document; collectWindows(f, acc, depth + 1); } }',
+  '          catch (e) { /* cross-origin: ignora */ }',
+  '        }',
+  '      }',
+  '    } catch (e) {}',
+  '    try {',
+  '      var doc = win.document;',
+  '      if (doc && doc.querySelectorAll) {',
+  '        var iframes = doc.querySelectorAll("iframe, frame");',
+  '        for (var j = 0; j < iframes.length; j++) {',
+  '          try { var cw = iframes[j].contentWindow; if (cw) { void cw.document; collectWindows(cw, acc, depth + 1); } }',
+  '          catch (e) { /* cross-origin: ignora */ }',
+  '        }',
+  '      }',
+  '    } catch (e) {}',
   '    return acc;',
   '  }',
   '  function uncollapseAncestors(node, jq, win) {',

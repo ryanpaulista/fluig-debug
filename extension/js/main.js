@@ -57,6 +57,19 @@ document.addEventListener('click', function (e) {
     return;
   }
 
+  // Copiar linha inteira de tabela pai-filho como JSON estruturado
+  var copyRowBtn = e.target.closest('[data-copy-row]');
+  if (copyRowBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    var rawPair = copyRowBtn.getAttribute('data-copy-row') || '';
+    var sepIdx = rawPair.lastIndexOf(':');
+    var tblName = sepIdx >= 0 ? rawPair.slice(0, sepIdx) : '';
+    var rIdx = sepIdx >= 0 ? rawPair.slice(sepIdx + 1) : rawPair;
+    copyTableRowJson(tblName, rIdx, copyRowBtn);
+    return;
+  }
+
   var focusBtn = e.target.closest('[data-focus-elem]');
   if (focusBtn) {
     e.preventDefault();
@@ -138,9 +151,83 @@ document.addEventListener('click', function (e) {
 chrome.devtools.network.onNavigated.addListener(function () {
   invalidateFieldIndex();
   browserFields = [];
+  browserRows = [];
   browserExpandedTables = {};
+  loadSolicitacao();
   loadFieldBrowser();
+  var preserveEl = document.getElementById('net-opt-preserve');
+  if (preserveEl && !preserveEl.checked) {
+    clearNetworkMonitor();
+  }
 });
+
+// Aba Rede Fluig: filtros, recarga, limpeza e acoes do inspector
+var netFilterEl = document.getElementById('net-filter');
+if (netFilterEl) { netFilterEl.addEventListener('input', renderNetworkMonitor); }
+
+var netHideNoiseEl = document.getElementById('net-opt-hide-noise');
+if (netHideNoiseEl) { netHideNoiseEl.addEventListener('change', renderNetworkMonitor); }
+
+var btnNetReload = document.getElementById('btn-net-reload');
+if (btnNetReload) { btnNetReload.addEventListener('click', loadNetworkMonitorFromHar); }
+
+var btnNetClear = document.getElementById('btn-net-clear');
+if (btnNetClear) { btnNetClear.addEventListener('click', clearNetworkMonitor); }
+
+var tabRedePanel = document.getElementById('tab-rede');
+if (tabRedePanel) {
+  tabRedePanel.addEventListener('click', function (e) {
+    if (!e.target.closest) { return; }
+
+    var kindBtn = e.target.closest('[data-net-kind]');
+    if (kindBtn) {
+      netMonitorKindFilter = kindBtn.getAttribute('data-net-kind') || 'all';
+      var allKindBtns = tabRedePanel.querySelectorAll('[data-net-kind]');
+      for (var i = 0; i < allKindBtns.length; i++) {
+        allKindBtns[i].classList.toggle('active', allKindBtns[i] === kindBtn);
+      }
+      renderNetworkMonitor();
+      return;
+    }
+
+    var rowEl = e.target.closest('[data-net-select]');
+    if (rowEl) {
+      selectNetMonitorItem(rowEl.getAttribute('data-net-select'));
+      return;
+    }
+
+    var copyCallBtn = e.target.closest('[data-net-copy-call]');
+    if (copyCallBtn) {
+      var callId = Number(copyCallBtn.getAttribute('data-net-copy-call'));
+      var item = netMonitorItems.filter(function (x) { return x.id === callId; })[0];
+      if (!item) { return; }
+      ensureNetItemResponse(item).then(function () {
+        copyWithFeedback(JSON.stringify(formatNetCallExportJson(item), null, 2), copyCallBtn);
+      });
+      return;
+    }
+
+    var copyRespBtn = e.target.closest('[data-net-copy-resp]');
+    if (copyRespBtn) {
+      var respId = Number(copyRespBtn.getAttribute('data-net-copy-resp'));
+      var rItem = netMonitorItems.filter(function (x) { return x.id === respId; })[0];
+      if (!rItem) { return; }
+      ensureNetItemResponse(rItem).then(function () {
+        var text = rItem.responseJson != null ? JSON.stringify(rItem.responseJson, null, 2) : (rItem.responseText || '');
+        copyWithFeedback(text, copyRespBtn);
+      });
+      return;
+    }
+
+    var copyDsCodeBtn = e.target.closest('[data-net-copy-ds-code]');
+    if (copyDsCodeBtn) {
+      var dsId = Number(copyDsCodeBtn.getAttribute('data-net-copy-ds-code'));
+      var dsItem = netMonitorItems.filter(function (x) { return x.id === dsId; })[0];
+      if (!dsItem || !dsItem.datasetInfo) { return; }
+      copyWithFeedback(buildDatasetSnippet(dsItem.datasetInfo), copyDsCodeBtn);
+    }
+  });
+}
 
 document.getElementById('read-field').focus();
 
@@ -149,6 +236,9 @@ loadSolicitacao();
 
 // Carrega o browser de campos (que tambem aquece o indice para o autocomplete).
 loadFieldBrowser();
+
+// Inicializa o monitor de rede Fluig (HAR atual + listener em tempo real).
+initNetworkMonitor();
 
 // Aba Dump: "Incluir retornos" so faz sentido com datasets ou REST marcados.
 function syncDumpOptions() {

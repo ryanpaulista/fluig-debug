@@ -5,7 +5,7 @@
 // UI — Abas
 // ---------------------------------------------------------------------------
 
-var TAB_NAMES = ['campos', 'dump'];
+var TAB_NAMES = ['campos', 'rede', 'dump'];
 
 function switchTab(name) {
   TAB_NAMES.forEach(function (t) {

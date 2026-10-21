@@ -14,8 +14,8 @@ var assert = require('assert');
 // Objetos criados dentro do vm tem outro prototipo: compara por JSON.
 assert.deepStrictEqual = function (a, b) { assert.strictEqual(JSON.stringify(a), JSON.stringify(b)); };
 
-var ctx = vm.createContext({ console: console, URL: URL, Promise: Promise });
-['bridge', 'dump-sanitize', 'dump-network', 'dump'].forEach(function (name) {
+var ctx = vm.createContext({ console: console, URL: URL, Promise: Promise, setTimeout: setTimeout, clearTimeout: clearTimeout });
+['bridge', 'page-index', 'autocomplete', 'dump-sanitize', 'dump-network', 'network-monitor', 'dump', 'field-browser'].forEach(function (name) {
   var file = path.join(__dirname, '..', 'extension', 'js', name + '.js');
   vm.runInContext(fs.readFileSync(file, 'utf8'), ctx, { filename: file });
 });
@@ -190,6 +190,197 @@ test('buildDumpOutput: secoes, compacto, rede e mascara', function () {
   assert.strictEqual(semCampos.fields, undefined);
   assert.strictEqual(semCampos.network, undefined);
   assert.strictEqual(semCampos.logs.length, 1);
+});
+
+test('formatRowCopyJson: gera JSON completo das celulas da linha pai-filho', function () {
+  ctx.rowMock = {
+    table: 'times',
+    child: '1',
+    fields: [
+      { name: 'ENTRY_ID___1', id: 'ENTRY_ID___1', field: 'ENTRY_ID', value: '530468', type: 'hidden', disabled: false, visible: false },
+      { name: '_USERNAME___1', id: '_USERNAME___1', field: 'USERNAME', value: 'Rafael', type: 'text', disabled: true, visible: true }
+    ]
+  };
+  var rowJson = run('formatRowCopyJson(rowMock)');
+  assert.strictEqual(rowJson.table, 'times');
+  assert.strictEqual(rowJson.row, '1');
+  assert.strictEqual(rowJson.fieldCount, 2);
+  assert.deepStrictEqual(rowJson.cells.ENTRY_ID, {
+    name: 'ENTRY_ID___1',
+    id: 'ENTRY_ID___1',
+    field: 'ENTRY_ID',
+    value: '530468',
+    type: 'hidden',
+    disabled: false,
+    visible: false
+  });
+  assert.deepStrictEqual(rowJson.cells.USERNAME, {
+    name: '_USERNAME___1',
+    id: '_USERNAME___1',
+    field: 'USERNAME',
+    value: 'Rafael',
+    type: 'text',
+    disabled: true,
+    visible: true
+  });
+});
+
+test('network-monitor: captura, deduplica, carrega retorno e gera snippet DatasetFactory', function () {
+  run('netMonitorItems = []; netMonitorSeen = {}; netMonitorSeq = 0;');
+  ctx.harSample = HAR;
+  var first = run('createNetMonitorItem(harSample[0])'); // script estatico -> null
+  assert.strictEqual(first, null);
+  var dsItem = run('createNetMonitorItem(harSample[1])');
+  assert.strictEqual(dsItem.kind, 'dataset');
+  assert.strictEqual(dsItem.datasetInfo.dataset, 'colleague');
+  // Deduplicacao da mesma entrada HAR
+  var dup = run('createNetMonitorItem(harSample[1])');
+  assert.strictEqual(dup, null);
+
+  var snippet = run('buildDatasetSnippet(createNetMonitorItem(harSample[3]).datasetInfo || netMonitorItems[0].datasetInfo)');
+  assert.ok(snippet.indexOf('DatasetFactory.getDataset') >= 0);
+
+  var fullSnippet = run('buildDatasetSnippet(netMonitorItems[0].datasetInfo)');
+  assert.ok(fullSnippet.indexOf('DatasetFactory.createConstraint("colleagueId", "admin", "admin", ConstraintType.MUST)') >= 0);
+  assert.ok(fullSnippet.indexOf('DatasetFactory.getDataset("colleague", ["colleagueName"], constraints, ["colleagueName"])') >= 0);
+
+  return run('ensureNetItemResponse(netMonitorItems[0])').then(function (loaded) {
+    assert.strictEqual(loaded.responseLoaded, true);
+    assert.strictEqual(loaded.datasetSummary.rowCount, 2);
+    var exported = run('formatNetCallExportJson(netMonitorItems[0])');
+    assert.strictEqual(exported.dataset, 'colleague');
+    assert.strictEqual(exported.response.content.values.length, 2);
+  });
+});
+
+test('ensureFieldIndex nao faz cache de indice vazio e collectWindows descobre iframes via DOM', function () {
+  var realEval = ctx.evalInPage;
+  var realBuildIdx = ctx.buildFieldIndexExpr;
+  var evalCalls = 0;
+  ctx.buildFieldIndexExpr = function () { return 'mock'; };
+  ctx.evalInPage = function () {
+    evalCalls++;
+    if (evalCalls === 1) {
+      return Promise.resolve({ fields: [], rows: [], fieldsTotal: 0, rowsTotal: 0 });
+    }
+    return Promise.resolve({ fields: [{ logical: 'startDate', name: 'startDate', value: '12/10/2026' }], rows: [], fieldsTotal: 1, rowsTotal: 0 });
+  };
+  run('invalidateFieldIndex()');
+  return run('ensureFieldIndex()').then(function (first) {
+    assert.strictEqual(first.fields.length, 0);
+    // Segunda chamada imediata deve consultar a pagina de novo porque a primeira veio vazia
+    return run('ensureFieldIndex()');
+  }).then(function (second) {
+    ctx.evalInPage = realEval;
+    ctx.buildFieldIndexExpr = realBuildIdx;
+    assert.strictEqual(second.fields.length, 1);
+    assert.strictEqual(second.fields[0].logical, 'startDate');
+    assert.strictEqual(evalCalls, 2);
+
+    // Testa collectWindows de PAGE_HELPERS quando win.frames esta vazio/sombreado mas ha iframe no DOM
+    var helpersFn = new Function(ctx.PAGE_HELPERS + '\nreturn { collectWindows: collectWindows };')();
+    var childWin = { document: { querySelectorAll: function () { return []; } }, frames: [] };
+    var topWin = {
+      frames: [], // sombreado ou vazio
+      document: {
+        querySelectorAll: function (sel) {
+          return sel.indexOf('iframe') >= 0 ? [{ contentWindow: childWin }] : [];
+        }
+      }
+    };
+    var wins = helpersFn.collectWindows(topWin, [], 0);
+    assert.strictEqual(wins.length, 2);
+    assert.strictEqual(wins[1], childWin);
+  });
+});
+
+test('evalInPage faz retry em "has no execution context" e page-index ignora shell do portal no pageworkflowview', function () {
+  var rawEvalCalls = 0;
+  ctx.chrome = {
+    devtools: {
+      inspectedWindow: {
+        eval: function (expr, cb) {
+          rawEvalCalls++;
+          if (rawEvalCalls === 1) {
+            cb(undefined, {
+              code: 'E_FAILED',
+              description: 'Operation failed: %s',
+              details: ['https://fluig/portal/p/1/pageworkflowview?app_ecm_workflowview_detailsProcessInstanceID=3211 has no execution context'],
+              isError: true
+            });
+            return;
+          }
+          cb({ ok: true, recovered: true }, undefined);
+        }
+      }
+    }
+  };
+
+  // Testa a expressao real de buildFieldIndexExpr() quando so o portal shell carregou vs quando o iframe carregou
+  var expr = run('buildFieldIndexExpr()');
+  var portalNode = {
+    getAttribute: function (k) { return k === 'name' ? 'wcm-edit-mode' : null; },
+    id: 'wcm-edit-mode',
+    type: 'hidden',
+    tagName: 'INPUT',
+    value: 'false'
+  };
+  var formNode = {
+    getAttribute: function (k) { return k === 'name' ? 'startDate' : null; },
+    id: 'startDate',
+    type: 'text',
+    tagName: 'INPUT',
+    value: '12/10/2026'
+  };
+
+  // 1) So o portal shell (wins[0]) carregou em pageworkflowview -> deve ignorar wcm-edit-mode e sinalizar formLoading: true
+  var winBeforeIframe = {
+    location: { href: 'https://fluig/portal/p/1/pageworkflowview?app_ecm_workflowview_detailsProcessInstanceID=3211' },
+    frames: [],
+    document: {
+      readyState: 'complete',
+      querySelectorAll: function (sel) {
+        if (sel.indexOf('iframe') >= 0) { return []; }
+        return [portalNode];
+      }
+    }
+  };
+  var resBefore = (new Function('window', 'return ' + expr))(winBeforeIframe);
+  assert.strictEqual(resBefore.fields.length, 0);
+  assert.strictEqual(resBefore.formLoading, true);
+
+  // 2) Iframe (#workflowView-cardViewer / streamcontrol) carregou -> retorna startDate (sem wcm-edit-mode) e formLoading: false
+  var iframeWin = {
+    location: { href: 'https://fluig/webdesk/streamcontrol/0/1010/89000/' },
+    frames: [],
+    document: {
+      readyState: 'complete',
+      querySelectorAll: function (sel) {
+        if (sel.indexOf('iframe') >= 0) { return []; }
+        return [formNode];
+      }
+    }
+  };
+  var winAfterIframe = {
+    location: { href: 'https://fluig/portal/p/1/pageworkflowview?app_ecm_workflowview_detailsProcessInstanceID=3211' },
+    frames: [iframeWin],
+    document: {
+      readyState: 'complete',
+      querySelectorAll: function (sel) {
+        if (sel.indexOf('iframe') >= 0) { return [{ contentWindow: iframeWin }]; }
+        return [portalNode];
+      }
+    }
+  };
+  var resAfter = (new Function('window', 'return ' + expr))(winAfterIframe);
+  assert.strictEqual(resAfter.fields.length, 1);
+  assert.strictEqual(resAfter.fields[0].logical, 'startDate');
+  assert.strictEqual(resAfter.formLoading, false);
+
+  return run('evalInPage("1+1")').then(function (res) {
+    assert.strictEqual(res.recovered, true);
+    assert.strictEqual(rawEvalCalls, 2);
+  });
 });
 
 // Executa em sequencia, aguardando os testes que devolvem Promise.

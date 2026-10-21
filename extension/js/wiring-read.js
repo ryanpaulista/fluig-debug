@@ -13,6 +13,9 @@ attachAutocomplete('read-field', 'read-field-ac');
 var tabBtnCampos = document.getElementById('tab-btn-campos');
 if (tabBtnCampos) { tabBtnCampos.addEventListener('click', function () { switchTab('campos'); }); }
 
+var tabBtnRede = document.getElementById('tab-btn-rede');
+if (tabBtnRede) { tabBtnRede.addEventListener('click', function () { switchTab('rede'); }); }
+
 var tabBtnDump = document.getElementById('tab-btn-dump');
 if (tabBtnDump) { tabBtnDump.addEventListener('click', function () { switchTab('dump'); }); }
 

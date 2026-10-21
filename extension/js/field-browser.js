@@ -17,10 +17,30 @@ var browserRows = [];
 var browserExpandedTables = {};
 var browserTableModes = {}; // tableName -> 'grid' | 'columns'
 var browserSelectedCells = {}; // tableName -> { rowIdx, colName, rawName, value, type, disabled }
+var browserRetryTimer = null;
+var browserFollowUpTimer = null;
+var browserRetryCount = 0;
+var BROWSER_MAX_RETRIES = 25;
+var BROWSER_RETRY_MS = 650;
 
-function loadFieldBrowser() {
+function cancelFieldBrowserRetry() {
+  if (browserRetryTimer) {
+    clearTimeout(browserRetryTimer);
+    browserRetryTimer = null;
+  }
+  if (browserFollowUpTimer) {
+    clearTimeout(browserFollowUpTimer);
+    browserFollowUpTimer = null;
+  }
+}
+
+function loadFieldBrowser(isRetry) {
   var body = document.getElementById('field-browser-body');
   if (!body) { return; }
+  if (isRetry !== true) {
+    cancelFieldBrowserRetry();
+    browserRetryCount = 0;
+  }
   if (!browserFields.length) {
     body.innerHTML = '<span class="muted">Carregando campos…</span>';
   }
@@ -28,7 +48,43 @@ function loadFieldBrowser() {
   ensureFieldIndex().then(function (index) {
     browserFields = (index && index.fields) || [];
     browserRows = (index && index.rows) || [];
+    var stillLoading = !browserFields.length || Boolean(index && index.formLoading);
+
+    if (browserFields.length > 0) {
+      renderFieldBrowser();
+    }
+
+    // No Fluig (pageworkflowview), o iframe do formulario (#workflowView-cardViewer)
+    // e criado de forma assincrona alguns segundos apos a navegacao da pagina.
+    if (stillLoading && browserRetryCount < BROWSER_MAX_RETRIES) {
+      browserRetryCount++;
+      if (browserRetryTimer) { clearTimeout(browserRetryTimer); }
+      browserRetryTimer = setTimeout(function () {
+        browserRetryTimer = null;
+        loadFieldBrowser(true);
+      }, BROWSER_RETRY_MS);
+      return;
+    }
+
+    cancelFieldBrowserRetry();
+    browserRetryCount = 0;
     renderFieldBrowser();
+
+    // Faz uma releitura silenciosa 900ms apos o carregamento inicial do iframe
+    // caso scripts $(document).ready do formulario criem linhas ou preencham campos.
+    if (browserFields.length > 0) {
+      browserFollowUpTimer = setTimeout(function () {
+        browserFollowUpTimer = null;
+        invalidateFieldIndex();
+        ensureFieldIndex().then(function (fresh) {
+          if (fresh && fresh.fields && fresh.fields.length >= browserFields.length) {
+            browserFields = fresh.fields;
+            browserRows = fresh.rows || [];
+            renderFieldBrowser();
+          }
+        });
+      }, 900);
+    }
   });
 }
 
@@ -98,8 +154,13 @@ function renderDataGripGrid(tbl, matchedRowsMap, shownRowKeys) {
       rowData[item.logical] = item;
     });
 
+    var rowKeyAttr = esc(tName + ':' + lk).replace(/"/g, '&quot;');
     html += '<tr>';
-    html += '<td class="dg-td-idx" title="Linha ' + esc(lk) + '">' + esc(lk) + '</td>';
+    html += '<td class="dg-td-idx" title="Linha ' + esc(lk) + '">' +
+      '<div class="dg-idx-wrap">' +
+      '<span>' + esc(lk) + '</span>' +
+      '<button type="button" class="btn-icon dg-copy-row-btn" data-copy-row="' + rowKeyAttr + '" title="Copiar linha ' + esc(lk) + ' completa (JSON)">' + COPY_SVG + '</button>' +
+      '</div></td>';
 
     uniqueCols.forEach(function (colName) {
       var cellItem = rowData[colName];
@@ -131,6 +192,7 @@ function renderDataGripGrid(tbl, matchedRowsMap, shownRowKeys) {
   if (selected) {
     var rawEsc = esc(selected.rawName).replace(/"/g, '&quot;');
     var tNameEsc = esc(tName).replace(/"/g, '&quot;');
+    var selRowAttr = esc(tName + ':' + selected.rowIdx).replace(/"/g, '&quot;');
     html += '<div class="dg-inspector-head">' +
       '<span class="dg-inspector-title" style="display:inline-flex; align-items:center; gap:4px;">Linha ' + esc(selected.rowIdx) + ' · <code>' + esc(selected.rawName) + '</code>' +
       '<button type="button" class="btn-icon" data-copy="' + rawEsc + '" title="Copiar nome do campo">' + COPY_SVG + '</button></span>' +
@@ -139,6 +201,7 @@ function renderDataGripGrid(tbl, matchedRowsMap, shownRowKeys) {
       '<button type="button" class="primary" data-dg-apply-db="' + tNameEsc + '" title="Grava o valor editado direto no banco (dsSetCardValue)">Setar Banco</button>' +
       '<button type="button" data-dg-reload-cell="' + tNameEsc + '" title="Reler valor atual do campo">Ler</button>' +
       '<button type="button" data-dg-copy-val="' + tNameEsc + '" title="Copiar conteúdo do campo">Copiar Conteúdo</button>' +
+      '<button type="button" data-copy-row="' + selRowAttr + '" title="Copiar JSON com todas as células da linha ' + esc(selected.rowIdx) + '">Copiar Linha JSON</button>' +
       '<button type="button" data-revert-ta="dg-val-' + esc(tName) + '" title="Reverter para o valor original do formulário (Ctrl+Z)">Reverter</button>' +
       '</div></div>';
     html += '<textarea class="dg-inspector-textarea" id="dg-val-' + esc(tName) + '" placeholder="(vazio)">' + esc(selected.value || '') + '</textarea>';
@@ -355,6 +418,45 @@ function reloadFieldBrowser() {
   invalidateFieldIndex();
   browserFields = [];
   loadFieldBrowser();
+}
+
+// Formata os campos retornados por buildRowExpr(table, child) em um objeto JSON
+// estruturado com todas as informacoes de cada celula da linha.
+function formatRowCopyJson(rowResult) {
+  var cells = {};
+  var fields = (rowResult && rowResult.fields) || [];
+  fields.forEach(function (f) {
+    var key = f.field || f.name;
+    cells[key] = {
+      name: f.name,
+      id: f.id || null,
+      field: f.field,
+      value: f.value != null ? String(f.value) : '',
+      type: f.type || '',
+      disabled: !!f.disabled,
+      visible: f.visible !== false
+    };
+  });
+  return {
+    table: (rowResult && rowResult.table) || null,
+    row: (rowResult && rowResult.child) || null,
+    fieldCount: Object.keys(cells).length,
+    cells: cells
+  };
+}
+
+// Le a linha completa direto do DOM (valores integrais, sem truncar) e copia
+// como JSON formatado para a area de transferencia.
+function copyTableRowJson(tableName, rowIdx, btn) {
+  if (!rowIdx) { return; }
+  evalInPage(buildRowExpr(tableName || '', rowIdx))
+    .then(function (rowResult) {
+      var payload = formatRowCopyJson(rowResult);
+      copyWithFeedback(JSON.stringify(payload, null, 2), btn);
+    })
+    .catch(function (err) {
+      alert('Erro ao copiar linha: ' + formatErr(err));
+    });
 }
 
 function focusElementInPage(rawName, btn) {

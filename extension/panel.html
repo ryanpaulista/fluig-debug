@@ -27,6 +27,7 @@
 
     <div class="tab-bar">
       <button id="tab-btn-campos" type="button" class="chip active">Campos do Formulário</button>
+      <button id="tab-btn-rede" type="button" class="chip">Rede Fluig</button>
       <button id="tab-btn-dump" type="button" class="chip">Dump JSON</button>
     </div>
 
@@ -63,6 +64,50 @@
           </button>
         </div>
         <div id="field-browser-body"></div>
+      </div>
+    </section>
+    </div>
+
+    <div id="tab-rede" class="tab-panel" hidden>
+    <section>
+      <h2>Monitor de Rede Fluig</h2>
+      <p class="muted">
+        Acompanhe em tempo real as chamadas de <strong>Dataset</strong> e
+        <strong>REST</strong> do Fluig sem poluição de scripts ou estilos.
+        Clique em uma chamada para inspecionar constraints, payload e retorno.
+      </p>
+      <div class="net-toolbar">
+        <div class="toolbar-group">
+          <button type="button" class="chip active" data-net-kind="all">Todas</button>
+          <button type="button" class="chip" data-net-kind="dataset">Datasets</button>
+          <button type="button" class="chip" data-net-kind="rest">REST</button>
+          <button type="button" class="chip" data-net-kind="error">Erros</button>
+        </div>
+        <button id="btn-net-reload" type="button" class="btn-icon" title="Sincronizar com histórico da aba Network (HAR)">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1.5 1.5v4.5h4.5"/>
+            <path d="M2.3 10a6 6 0 1 0 1.2-6.2L1.5 6"/>
+          </svg>
+        </button>
+        <button id="btn-net-clear" type="button" title="Limpar lista de chamadas">Limpar</button>
+        <span id="net-monitor-status" class="muted" style="font-size:11px; margin-left:auto;"></span>
+      </div>
+      <div class="dump-filter-row" style="margin: 8px 0;">
+        <div class="search">
+          <svg class="search-ico" viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="7" cy="7" r="4.25" />
+            <path d="M10.3 10.3 14 14" />
+          </svg>
+          <input id="net-filter" type="text" placeholder="filtrar por dataset, URL, método ou constraint" autocomplete="off" />
+        </div>
+      </div>
+      <div class="net-options-row">
+        <label><input type="checkbox" id="net-opt-hide-noise" checked /> Ocultar ruído interno do portal</label>
+        <label><input type="checkbox" id="net-opt-preserve" checked /> Preservar ao navegar</label>
+      </div>
+      <div class="dg-grid-wrap net-monitor-wrap">
+        <div id="net-monitor-list" class="net-monitor-list"></div>
+        <div id="net-monitor-inspector" class="dg-inspector"></div>
       </div>
     </section>
     </div>
@@ -116,6 +161,7 @@
     <script src="js/set.js"></script>
     <script src="js/dump-sanitize.js"></script>
     <script src="js/dump-network.js"></script>
+    <script src="js/network-monitor.js"></script>
     <script src="js/dump.js"></script>
     <script src="js/field-browser.js"></script>
     <script src="js/solicitacao.js"></script>

@@ -14,26 +14,38 @@
 var fieldIndex = null;
 var fieldIndexAt = 0;
 var fieldIndexPending = null;
+var fieldIndexGen = 0;
 var INDEX_TTL_MS = 3000;
 var MAX_SUGGESTIONS = 50;
 var EMPTY_INDEX = { fields: [], rows: [], fieldsTotal: 0, rowsTotal: 0 };
 
 function ensureFieldIndex() {
-  if (fieldIndex && (Date.now() - fieldIndexAt) < INDEX_TTL_MS) {
+  if (fieldIndex && fieldIndex.fields && fieldIndex.fields.length > 0 && !fieldIndex.formLoading && (Date.now() - fieldIndexAt) < INDEX_TTL_MS) {
     return Promise.resolve(fieldIndex);
   }
   // Uma varredura em voo por vez: as 3 caixas compartilham a mesma promise.
   if (fieldIndexPending) { return fieldIndexPending; }
 
+  var myGen = fieldIndexGen;
   fieldIndexPending = evalInPage(buildFieldIndexExpr())
     .then(function (result) {
-      fieldIndex = result || EMPTY_INDEX;
-      fieldIndexAt = Date.now();
-      fieldIndexPending = null;
-      return fieldIndex;
+      var idx = result || EMPTY_INDEX;
+      if (myGen === fieldIndexGen) {
+        if (idx.fields && idx.fields.length > 0 && !idx.formLoading) {
+          fieldIndex = idx;
+          fieldIndexAt = Date.now();
+        } else {
+          fieldIndex = null;
+          fieldIndexAt = 0;
+        }
+        fieldIndexPending = null;
+      }
+      return idx;
     })
     .catch(function () {
-      fieldIndexPending = null;
+      if (myGen === fieldIndexGen) {
+        fieldIndexPending = null;
+      }
       // Autocomplete e conveniencia: se a varredura falhar (pagina navegando,
       // formulario ainda carregando), o input segue funcionando na digitacao
       // manual. Nao poluimos a UI com erro por causa da sugestao.
@@ -44,8 +56,10 @@ function ensureFieldIndex() {
 }
 
 function invalidateFieldIndex() {
+  fieldIndexGen++;
   fieldIndex = null;
   fieldIndexAt = 0;
+  fieldIndexPending = null;
 }
 
 // Filtra o indice pelo que foi digitado. Dois modos:

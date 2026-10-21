@@ -34,8 +34,9 @@ A extensão é focada em velocidade, segurança e usabilidade: varre automaticam
   - [2. Leitura e Localização de Campos (com Auto-Uncollapse)](#2-leitura-e-localização-de-campos-com-auto-uncollapse)
   - [3. Browser de Campos e Tabelas Pai-Filho](#3-browser-de-campos-e-tabelas-pai-filho)
   - [4. Alteração de Valores (DOM e Banco de Dados)](#4-alteração-de-valores-dom-e-banco-de-dados)
-  - [5. Dump de Estado em JSON](#5-dump-de-estado-em-json)
-  - [6. Histórico com Rollback](#6-histórico-com-rollback)
+  - [5. Monitor de Rede Fluig (Datasets e REST ao Vivo)](#5-monitor-de-rede-fluig-datasets-e-rest-ao-vivo)
+  - [6. Dump de Estado em JSON](#6-dump-de-estado-em-json)
+  - [7. Histórico com Rollback](#7-histórico-com-rollback)
 - [Arquitetura e Segurança 🛡️](#arquitetura-e-segurança-️)
 - [Contribuindo 👩‍💻🧑‍💻](#contribuindo-)
 - [Licença 📄](#licença-)
@@ -98,16 +99,23 @@ Exibe no topo fixo o número da **Solicitação de Workflow** e resolve automati
 ### 3. Browser de Campos e Tabelas Pai-Filho
 Abaixo da barra de leitura, uma listagem inteligente indexa os campos da página:
 - **Tabelas Pai-Filho no Topo:** Agrupadas em acordeões limpos com contagem de linhas e campos.
-- **Exibição por Linhas (`___N`) ou por Colunas:** Alterne para inspecionar cada registro da tabela individualmente ou ver um resumo estrutural das colunas.
+- **Exibição em Grid (estilo DataGrip) ou por Colunas:** Alterne para inspecionar e editar células em uma planilha interativa ou ver um resumo estrutural das colunas.
+- **Copiar Linha Completa em JSON:** Copie qualquer linha (`___N`) de uma tabela pai-filho com um clique (tanto pelo ícone na coluna `#` do grid quanto pelo botão **Copiar Linha JSON** no inspector da célula ou no bloco *Linha completa*). O JSON gerado traz os metadados completos de cada célula da linha (`name`, `id`, `field`, `value` integral sem truncamento, `type`, `disabled` e `visible`).
 - **Filtro em Tempo Real:** Pesquisa simultânea por nome do campo, tabela ou valor preenchido.
-- **Atalhos Rápidos:** Botões inline para **Ler**, **Setar** e **Copiar** o nome de qualquer campo.
+- **Atalhos Rápidos:** Botões inline para **Ler / Editar** e **Copiar** o nome ou conteúdo de qualquer campo.
 
 ### 4. Alteração de Valores (DOM e Banco de Dados)
 - **Setar via DOM:** Aplica `$(campo).val(novoValor)` com tela prévia de confirmação e *read-back* do valor persistido.
 - **Setar no Banco (`dsSetCardValue`):** Permite gravar valores diretamente no banco através de dataset customizado para formulários finalizados ou campos bloqueados.
   > **⚠️ Requisito para Gravação no Banco:** Para que a funcionalidade de gravar no banco funcione, o ambiente Fluig deve possuir um dataset customizado chamado **`dsSetCardValue`** cadastrado no servidor. Ele recebe as constraints `documentid`, `fieldName` e `fieldValue` para persistência via API interna.
 
-### 5. Dump de Estado em JSON
+### 5. Monitor de Rede Fluig (Datasets e REST ao Vivo)
+A aba **Rede Fluig** exibe em tempo real apenas as chamadas de API e de Datasets do Fluig, ignorando arquivos estáticos (`.js`, `.css`, imagens) e chamadas do próprio painel:
+- **Filtros Rápidos:** Alterne entre **Todas**, **Datasets**, **REST** e **Erros**, pesquise por nome de dataset, URL ou constraint e oculte o ruído interno do portal com um clique.
+- **Inspector de Chamada:** Ao clicar em uma requisição, visualize o status, tempo de resposta, tabela de `constraints` (`MUST`, `SHOULD`, `MUST_NOT`), `fields`, payload enviado e o retorno JSON formatado com contagem de linhas e colunas.
+- **Exportação e Gerador de Código:** Botões para **Copiar Chamada JSON** (envio + retorno), **Copiar Retorno** e, para datasets, **Copiar JS** (gera o snippet `DatasetFactory.getDataset(...)` com todas as `DatasetFactory.createConstraint(...)` pronto para colar no código).
+
+### 6. Dump de Estado em JSON
 Coleta o estado do formulário com um clique, e você escolhe por checkbox o que entra no JSON:
 - **Campos e tabelas:** Metadados, campos simples e tabelas pai-filho estruturadas por linha.
 - **Logs do console:** `console.*` e erros capturados desde que o DevTools foi aberto.
@@ -118,7 +126,7 @@ Coleta o estado do formulário com um clique, e você escolhe por checkbox o que
 
 > **ℹ️ Sobre a rede:** só aparecem as chamadas feitas com o DevTools aberto. Marque **Preserve log** na aba Network para não perdê-las ao navegar.
 
-### 6. Histórico com Rollback
+### 7. Histórico com Rollback
 Histórico de ações (Ler, Setar e Setar no Banco) com botão de **Restaurar valor anterior**, permitindo desfazer alterações acidentais em segundos.
 
 ---
@@ -146,6 +154,7 @@ extension/
     ├── read.js · set.js    # Aba Campos: ler e setar no DOM
     ├── dump-sanitize.js    # Máscara de dados sensíveis do dump
     ├── dump-network.js     # Chamadas REST e de dataset via chrome.devtools.network
+    ├── network-monitor.js  # Aba Rede Fluig: monitor ao vivo e inspector de chamadas
     ├── dump.js             # Aba Dump: opções, contexto e montagem do JSON
     ├── field-browser.js    # Browser de campos e tabelas pai-filho
     ├── solicitacao.js      # documentId da solicitação e helpers de dataset

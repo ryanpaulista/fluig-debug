@@ -2,7 +2,19 @@
 // Script classico (escopo global compartilhado); ordem de carga definida em panel.html.
 
 // Browser de campos: filtro e cliques delegados nos containers estaveis.
-document.getElementById('field-browser-filter').addEventListener('input', renderFieldBrowser);
+var browserFilterInput = document.getElementById('field-browser-filter');
+browserFilterInput.addEventListener('input', function () {
+  if (!browserFields.length) {
+    loadFieldBrowser();
+    return;
+  }
+  renderFieldBrowser();
+});
+browserFilterInput.addEventListener('focus', function () {
+  if (!browserFields.length) {
+    loadFieldBrowser();
+  }
+});
 document.getElementById('btn-browser-reload').addEventListener('click', reloadFieldBrowser);
 document.getElementById('field-browser-body').addEventListener('click', function (e) {
   if (!e.target.closest) { return; }
