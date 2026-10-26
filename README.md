@@ -10,7 +10,7 @@
     <a href="#instalação"><img src="https://img.shields.io/badge/Manifest-V3-teal?style=flat-square" alt="Manifest V3" /></a>
     <a href="#permissões"><img src="https://img.shields.io/badge/Permissões-Zero-brightgreen?style=flat-square" alt="Zero Permissions" /></a>
     <a href="#plataforma"><img src="https://img.shields.io/badge/Plataforma-TOTVS%20Fluig-blue?style=flat-square" alt="TOTVS Fluig" /></a>
-    <a href="#versão"><img src="https://img.shields.io/badge/Versão-2.1.0-orange?style=flat-square" alt="Version 2.1" /></a>
+    <a href="#versão"><img src="https://img.shields.io/badge/Versão-2.2.0-orange?style=flat-square" alt="Version 2.2.0" /></a>
   </p>
 
   <br />

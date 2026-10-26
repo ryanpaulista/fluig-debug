@@ -130,20 +130,25 @@
         -webkit-font-smoothing: antialiased;
       }
 
-      /* Faixa de titulo: marca de tinta + nome. Sem borda, sem fundo — e ancora
-         visual, nao cabecalho de app. */
+      /* Faixa de titulo: icone + nome + versao + link do GitHub. */
       .topbar {
         display: flex;
         align-items: center;
-        gap: 8px;
+        justify-content: space-between;
+        gap: 10px;
         margin: 2px 2px 12px;
       }
-      .mark {
-        flex: 0 0 auto;
-        width: 16px;
-        height: 16px;
+      .topbar-brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .topbar-logo {
+        width: 20px;
+        height: 20px;
         border-radius: 5px;
-        background: var(--ink);
+        flex-shrink: 0;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.22);
       }
       h1 {
         margin: 0;
@@ -151,10 +156,34 @@
         font-weight: 500;
         letter-spacing: 0;
       }
-      .topbar-note {
-        margin-left: auto;
-        font-size: 11px;
+      .topbar-version {
+        font-family: var(--mono);
+        font-size: 10.5px;
         color: var(--ash);
+        background: var(--sunken);
+        border: 1px solid var(--line-soft);
+        padding: 1px 6px;
+        border-radius: var(--r-pill);
+      }
+      .topbar-gh {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: auto;
+        padding: 4px 10px;
+        font-size: 11.5px;
+        font-weight: 500;
+        color: var(--graphite);
+        background: var(--card);
+        border: 1px solid var(--line-soft);
+        border-radius: var(--r-pill);
+        text-decoration: none;
+        transition: color 120ms, border-color 120ms, background-color 120ms;
+      }
+      .topbar-gh:hover {
+        color: var(--ink);
+        border-color: var(--teal);
+        background: var(--sunken);
       }
 
       /* Cada secao e uma folha sobre o pergaminho: por isso borda de 1px e uma
@@ -688,28 +717,138 @@
       /* Contexto (Solicitação fixa) ----------------------------------------- */
 
       .context {
-        padding: 12px 16px;
+        padding: 12px 14px;
       }
       .context-head {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
       }
       .context-head h2 {
         font-size: 13px;
       }
-      .context-head .muted {
+      .context-head #solicitacao-status {
         margin-left: auto;
         font-size: 11px;
       }
+      .ctx-status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 11px;
+        color: var(--ash);
+      }
+      .ctx-status-pill.ok {
+        color: var(--ok);
+      }
+      .ctx-status-pill.err {
+        color: var(--err);
+      }
+      .ctx-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+        display: inline-block;
+      }
       .context-body {
-        margin-top: 6px;
+        margin-top: 8px;
       }
       .context-body:empty {
         display: none;
       }
       .context-body .row {
         margin: 2px 0;
+      }
+      .ctx-grid-ids {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+        gap: 8px;
+      }
+      .ctx-grid-meta {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .ctx-card {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 4px;
+        padding: 7px 10px;
+        background: var(--sunken);
+        border: 1px solid var(--line-soft);
+        border-radius: 8px;
+        cursor: pointer;
+        user-select: none;
+        min-width: 0;
+        transition: border-color 120ms, background-color 120ms, transform 80ms;
+      }
+      .ctx-card:hover {
+        border-color: var(--teal);
+        background: var(--card);
+      }
+      .ctx-card:active {
+        transform: translateY(1px);
+      }
+      .ctx-card.copied {
+        border-color: var(--ok) !important;
+        background: rgba(139, 179, 124, 0.08);
+      }
+      .ctx-card-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+      }
+      .ctx-label {
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--ash);
+      }
+      .ctx-copy-ico {
+        display: inline-flex;
+        align-items: center;
+        color: var(--ash);
+        opacity: 0.65;
+        transition: color 120ms, opacity 120ms;
+      }
+      .ctx-card:hover .ctx-copy-ico {
+        color: var(--teal);
+        opacity: 1;
+      }
+      .ctx-card.copied .ctx-copy-ico,
+      .ctx-card.copied .ctx-copy-ico svg {
+        color: var(--ok) !important;
+        stroke: var(--ok) !important;
+        opacity: 1;
+      }
+      .ctx-val {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        font-size: 13px;
+        font-weight: 500;
+      }
+      .ctx-val code {
+        padding: 0;
+        background: transparent;
+        border: none;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--ink);
+      }
+      .ctx-val code.ok {
+        color: var(--ok);
+      }
+      .ctx-code-truncate {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       /* Botão icone (inline, sem borda — para ações secundárias como

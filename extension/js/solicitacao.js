@@ -171,17 +171,28 @@ function buildDbSetExpr(documentId, fieldName, fieldValue) {
   ].join('\n');
 }
 
+function renderCtxCard(label, copyVal, valueHtml) {
+  var copyEsc = esc(copyVal != null ? copyVal : '').replace(/"/g, '&quot;');
+  return '<div class="ctx-card" data-copy="' + copyEsc + '" title="Clique para copiar ' + copyEsc + '">' +
+    '<div class="ctx-card-top">' +
+    '<span class="ctx-label">' + esc(label) + '</span>' +
+    '<span class="ctx-copy-ico">' + COPY_SVG + '</span>' +
+    '</div>' +
+    '<div class="ctx-val">' + valueHtml + '</div>' +
+    '</div>';
+}
+
 function renderSolicitacao(result) {
   var status = document.getElementById('solicitacao-status');
 
   if (!result) {
-    status.innerHTML = '<span class="err">Sem retorno.</span>';
+    status.innerHTML = '<span class="ctx-status-pill err"><span class="ctx-dot"></span>sem retorno</span>';
     render('solicitacao-output', '<span class="err">Sem retorno da página.</span>');
     return;
   }
 
   if (!result.ok) {
-    status.innerHTML = '<span class="err">não resolvido</span>';
+    status.innerHTML = '<span class="ctx-status-pill err"><span class="ctx-dot"></span>não resolvido</span>';
     var head = result.numProcess
       ? '<div class="row"><span class="k">Solicitação</span><code>' + esc(result.numProcess) + '</code></div>'
       : '';
@@ -190,25 +201,28 @@ function renderSolicitacao(result) {
     return;
   }
 
-  status.innerHTML = '<span class="ok">documentId resolvido</span>';
-  var html =
-    '<div class="row"><span class="k">Solicitação</span>' + renderCopyable(result.numProcess) + '</div>' +
-    '<div class="row"><span class="k">documentId</span>' + renderCopyable(result.documentId, '<span class="ok">' + esc(result.documentId) + '</span>') + '</div>';
+  status.innerHTML = '<span class="ctx-status-pill ok"><span class="ctx-dot"></span>documentId resolvido</span>';
+
+  var idsHtml = '<div class="ctx-grid-ids">';
+  idsHtml += renderCtxCard('Solicitação', result.numProcess, '<code>#' + esc(result.numProcess) + '</code>');
+  idsHtml += renderCtxCard('Document ID', result.documentId, '<code class="ok">' + esc(result.documentId) + '</code>');
   if (result.cardIndexDocumentId && result.cardIndexDocumentId !== result.documentId) {
-    html += '<div class="row"><span class="k">cardIndex</span>' + renderCopyable(result.cardIndexDocumentId) + '</div>';
+    idsHtml += renderCtxCard('Card Index', result.cardIndexDocumentId, '<code>' + esc(result.cardIndexDocumentId) + '</code>');
   }
+  idsHtml += '</div>';
 
   // Metadados do workflowView (Formulário e Atividade Atual)
   var wv = result.workflowView || {};
+  var metaCards = [];
   if (wv.formDescription) {
     var formLabel = esc(wv.formDescription);
-    var formEsc = '<code>' + formLabel + '</code>';
+    var formEsc = '<code class="ctx-code-truncate" title="' + formLabel + '">' + formLabel + '</code>';
     if (wv.formVersion) {
-      formEsc += ' <span class="tag">v. ' + esc(wv.formVersion) + '</span>';
+      formEsc += '<span class="tag">v. ' + esc(wv.formVersion) + '</span>';
     }
-    html += '<div class="row"><span class="k">Formulário</span>' + renderCopyable(wv.formDescription, formEsc) + '</div>';
+    metaCards.push(renderCtxCard('Formulário', wv.formDescription, formEsc));
   } else if (wv.formVersion) {
-    html += '<div class="row"><span class="k">Versão form</span>' + renderCopyable(wv.formVersion) + '</div>';
+    metaCards.push(renderCtxCard('Versão Form', wv.formVersion, '<code>' + esc(wv.formVersion) + '</code>'));
   }
 
   if (wv.sequence || wv.currentStateDescription) {
@@ -220,10 +234,14 @@ function renderSolicitacao(result) {
     } else {
       ativText = wv.currentStateDescription;
     }
-    html += '<div class="row"><span class="k">Atividade</span>' + renderCopyable(ativText) + '</div>';
+    metaCards.push(renderCtxCard('Atividade Atual', ativText, '<code class="ctx-code-truncate" title="' + esc(ativText) + '">' + esc(ativText) + '</code>'));
   }
 
-  render('solicitacao-output', html);
+  var metaHtml = metaCards.length > 0
+    ? '<div class="ctx-grid-meta">' + metaCards.join('') + '</div>'
+    : '';
+
+  render('solicitacao-output', idsHtml + metaHtml);
 }
 
 var solicitacaoRetryTimer = null;
